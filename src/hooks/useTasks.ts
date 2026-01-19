@@ -25,7 +25,6 @@ interface TaskEvent {
 }
 
 const MAX_COMPLETED_TASKS = 5;
-const STALE_TASK_TIMEOUT = 30000; // 30 seconds - auto-complete stale tasks
 
 export function useTasks() {
   const [tasks, setTasks] = useState<Map<string, Task>>(new Map());
@@ -103,25 +102,6 @@ export function useTasks() {
     }
   }, [activeTasks.length, hideTimeout]);
 
-  // Auto-complete stale tasks that never received a completion event
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setTasks((prev) => {
-        let hasChanges = false;
-        const next = new Map(prev);
-        for (const [id, task] of next) {
-          if (task.status === "active" && now - task.startTime > STALE_TASK_TIMEOUT) {
-            next.set(id, { ...task, status: "error", endTime: now });
-            hasChanges = true;
-          }
-        }
-        return hasChanges ? next : prev;
-      });
-    }, 5000); // Check every 5 seconds
-
-    return () => clearInterval(interval);
-  }, []);
 
   const clearCompleted = useCallback(() => {
     setTasks((prev) => {

@@ -20,9 +20,18 @@ pub struct TaskEvent {
     pub duration_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TodoItem {
+    pub content: String,
+    pub status: String,
+    #[serde(rename = "activeForm")]
+    pub active_form: String,
+}
+
 struct FileWatcherState {
     last_position: u64,
     last_size: u64,
+    last_todos_modified: Option<std::time::SystemTime>,
 }
 
 fn get_events_file_path() -> PathBuf {
@@ -30,6 +39,22 @@ fn get_events_file_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".claude")
         .join("progress-events.jsonl")
+}
+
+fn get_todos_file_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".claude")
+        .join("todos.json")
+}
+
+fn read_todos(path: &PathBuf) -> Option<Vec<TodoItem>> {
+    if !path.exists() {
+        return None;
+    }
+
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
 }
 
 fn read_new_events(path: &PathBuf, state: &mut FileWatcherState) -> Vec<TaskEvent> {
@@ -239,13 +264,14 @@ pub fn run() {
 
 fn start_file_poller(app: AppHandle) {
     let events_path = get_events_file_path();
+    let todos_path = get_todos_file_path();
 
     // Ensure parent directory exists
     if let Some(parent) = events_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
 
-    // Create file if it doesn't exist
+    // Create events file if it doesn't exist
     if !events_path.exists() {
         let _ = File::create(&events_path);
     }
@@ -253,16 +279,29 @@ fn start_file_poller(app: AppHandle) {
     // Start from end of file - only show new events from this point forward
     let initial_size = fs::metadata(&events_path).map(|m| m.len()).unwrap_or(0);
 
+    // Get initial todos modified time
+    let initial_todos_modified = fs::metadata(&todos_path)
+        .and_then(|m| m.modified())
+        .ok();
+
     let state = Arc::new(Mutex::new(FileWatcherState {
         last_position: initial_size,  // Start from end - only new events
         last_size: initial_size,
+        last_todos_modified: initial_todos_modified,
     }));
+
+    // Emit initial todos if file exists
+    if let Some(todos) = read_todos(&todos_path) {
+        println!("[Overlay] Initial todos: {} items", todos.len());
+        let _ = app.emit("todos-update", &todos);
+    }
 
     // Simple polling loop - check every 200ms
     loop {
         std::thread::sleep(Duration::from_millis(200));
 
         if let Ok(mut s) = state.lock() {
+            // Check for new task events
             let events = read_new_events(&events_path, &mut s);
             if !events.is_empty() {
                 println!("[Overlay] Read {} events", events.len());
@@ -271,6 +310,21 @@ fn start_file_poller(app: AppHandle) {
                 println!("[Overlay] Emitting: {} - {}", event.event_type, event.task_id);
                 if let Err(e) = app.emit("task-event", &event) {
                     eprintln!("[Overlay] Emit error: {}", e);
+                }
+            }
+
+            // Check for todos updates
+            let current_todos_modified = fs::metadata(&todos_path)
+                .and_then(|m| m.modified())
+                .ok();
+
+            if current_todos_modified != s.last_todos_modified {
+                s.last_todos_modified = current_todos_modified;
+                if let Some(todos) = read_todos(&todos_path) {
+                    println!("[Overlay] Todos updated: {} items", todos.len());
+                    if let Err(e) = app.emit("todos-update", &todos) {
+                        eprintln!("[Overlay] Todos emit error: {}", e);
+                    }
                 }
             }
         }

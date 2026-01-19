@@ -23,16 +23,11 @@
         "alwaysOnTop": true,
         "transparent": false,
         "decorations": false,
-        "skipTaskbar": false,
+        "skipTaskbar": true,
         "visible": true,
         "focus": true
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "title": "Agent Progress"
-    },
     "security": {
       "csp": null
     }

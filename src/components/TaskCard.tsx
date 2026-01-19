@@ -15,86 +15,194 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-function cleanDescription(desc: string, tool: string): string {
+function getFileName(desc: string): string {
+  const match = desc.match(/[/\\]([^/\\]+)$/);
+  return match ? match[1] : desc;
+}
+
+function getSummary(desc: string, tool: string): string {
   if (!desc) return "Running...";
 
-  // For Bash commands, show the actual command (shortened if needed)
+  // Bash commands - create human readable summaries
   if (tool === "Bash") {
-    // Remove cd prefix if command follows
-    let cmd = desc.replace(/^cd\s+["'][^"']+["']\s*&&\s*/, "").trim();
+    // Remove common prefixes that precede the actual command
+    let cmd = desc
+      .replace(/^cd\s+["'][^"']+["']\s*&&\s*/, "")  // cd 'path' &&
+      .replace(/^cd\s+[^\s&]+\s*&&\s*/, "")         // cd path &&
+      .replace(/^sleep\s+\d+\s*&&\s*/, "")          // sleep N &&
+      .replace(/^timeout\s+\d+\s*&&\s*/, "")        // timeout N &&
+      .trim();
 
-    // If it's just cd, show the path
-    if (desc.startsWith("cd ") && !desc.includes("&&")) {
-      const pathMatch = desc.match(/cd\s+["']?([^"']+)["']?/);
+    // Helper to extract last path segment
+    const getTarget = (s: string): string => {
+      const pathMatch = s.match(/["']?([^"'\s]+)["']?\s*$/);
       if (pathMatch) {
-        const path = pathMatch[1];
-        const lastPart = path.split(/[/\\]/).pop() || path;
-        return `cd ${lastPart}`;
+        const parts = pathMatch[1].split(/[/\\]/);
+        return parts[parts.length - 1] || parts[parts.length - 2] || "";
       }
+      return "";
+    };
+
+    // Standalone cd command
+    if (cmd.match(/^cd\s+/i)) {
+      const target = getTarget(cmd);
+      return target ? `Navigating to ${target}` : "Changing directory";
     }
 
-    // Truncate long commands but show actual command
-    if (cmd.length > 45) {
-      return cmd.substring(0, 42) + "...";
+    // npm/yarn/pnpm
+    if (cmd.match(/^npm\s+(run\s+)?build/i)) return "Building the project";
+    if (cmd.match(/^npm\s+(run\s+)?test/i)) return "Running test suite";
+    if (cmd.match(/^npm\s+(run\s+)?start/i)) return "Starting dev server";
+    if (cmd.match(/^npm\s+(run\s+)?dev/i)) return "Starting dev server";
+    if (cmd.match(/^npm\s+install\s+(\S+)/i)) {
+      const pkg = cmd.match(/^npm\s+install\s+(\S+)/i)?.[1];
+      return `Installing ${pkg} package`;
+    }
+    if (cmd.match(/^npm\s+install/i)) return "Installing dependencies";
+    if (cmd.match(/^npm\s+run\s+(\w+)/)) {
+      const script = cmd.match(/^npm\s+run\s+(\w+)/)?.[1];
+      return `Running "${script}" script`;
+    }
+    if (cmd.match(/^yarn\s+build/i)) return "Building the project";
+    if (cmd.match(/^yarn\s+test/i)) return "Running test suite";
+    if (cmd.match(/^yarn\s+install/i)) return "Installing dependencies";
+    if (cmd.match(/^yarn\s+add\s+(\S+)/i)) {
+      const pkg = cmd.match(/^yarn\s+add\s+(\S+)/i)?.[1];
+      return `Installing ${pkg} package`;
+    }
+    if (cmd.match(/^pnpm\s+install/i)) return "Installing dependencies";
+    if (cmd.match(/^pnpm\s+build/i)) return "Building the project";
+
+    // git
+    if (cmd.match(/^git\s+status/i)) return "Checking working tree status";
+    if (cmd.match(/^git\s+diff/i)) return "Viewing uncommitted changes";
+    if (cmd.match(/^git\s+log/i)) return "Viewing commit history";
+    if (cmd.match(/^git\s+add\s+\./i)) return "Staging all changes";
+    if (cmd.match(/^git\s+add\s+(\S+)/i)) {
+      const file = getTarget(cmd);
+      return `Staging ${file}`;
+    }
+    if (cmd.match(/^git\s+add/i)) return "Staging files";
+    if (cmd.match(/^git\s+commit/i)) return "Creating a commit";
+    if (cmd.match(/^git\s+push/i)) return "Pushing to remote";
+    if (cmd.match(/^git\s+pull/i)) return "Pulling from remote";
+    if (cmd.match(/^git\s+clone/i)) return "Cloning repository";
+    if (cmd.match(/^git\s+checkout\s+(\S+)/i)) {
+      const branch = cmd.match(/^git\s+checkout\s+(\S+)/i)?.[1];
+      return `Switching to ${branch}`;
+    }
+    if (cmd.match(/^git\s+branch/i)) return "Managing branches";
+    if (cmd.match(/^git\s+merge/i)) return "Merging branches";
+    if (cmd.match(/^git\s+rebase/i)) return "Rebasing commits";
+    if (cmd.match(/^git\s+stash/i)) return "Stashing changes";
+    if (cmd.match(/^git\s+fetch/i)) return "Fetching from remote";
+
+    // cargo/rust
+    if (cmd.match(/^cargo\s+build/i)) return "Compiling Rust project";
+    if (cmd.match(/^cargo\s+test/i)) return "Running Rust tests";
+    if (cmd.match(/^cargo\s+run/i)) return "Running Rust binary";
+    if (cmd.match(/^cargo\s+check/i)) return "Checking Rust code";
+    if (cmd.match(/^rustc/i)) return "Compiling Rust";
+
+    // python
+    if (cmd.match(/^python\s+["']?([^"'\s]+)/i)) {
+      const script = getTarget(cmd);
+      return script ? `Running ${script}` : "Running Python script";
+    }
+    if (cmd.match(/^pip\s+install\s+-r/i)) return "Installing from requirements";
+    if (cmd.match(/^pip\s+install\s+(\S+)/i)) {
+      const pkg = cmd.match(/^pip\s+install\s+(\S+)/i)?.[1];
+      return `Installing ${pkg}`;
+    }
+    if (cmd.match(/^pip\s+install/i)) return "Installing Python packages";
+    if (cmd.match(/^pytest/i)) return "Running Python tests";
+    if (cmd.match(/^pip\s+freeze/i)) return "Listing installed packages";
+
+    // docker
+    if (cmd.match(/^docker\s+build/i)) return "Building Docker image";
+    if (cmd.match(/^docker\s+run/i)) return "Starting container";
+    if (cmd.match(/^docker\s+compose\s+up/i)) return "Starting services";
+    if (cmd.match(/^docker\s+compose\s+down/i)) return "Stopping services";
+    if (cmd.match(/^docker\s+compose\s+build/i)) return "Building services";
+    if (cmd.match(/^docker\s+ps/i)) return "Listing containers";
+    if (cmd.match(/^docker\s+logs/i)) return "Viewing container logs";
+
+    // file operations
+    if (cmd.match(/^make\s+(\w+)/i)) {
+      const target = cmd.match(/^make\s+(\w+)/i)?.[1];
+      return `Running make ${target}`;
+    }
+    if (cmd.match(/^make\b/i)) return "Running make";
+    if (cmd.match(/^ls\s/i) || cmd === "ls") return "Listing directory contents";
+    if (cmd.match(/^mkdir\s/i)) return `Creating ${getTarget(cmd)} directory`;
+    if (cmd.match(/^rm\s+-rf?\s/i)) return `Removing ${getTarget(cmd)}`;
+    if (cmd.match(/^rm\s/i)) return `Deleting ${getTarget(cmd)}`;
+    if (cmd.match(/^cp\s/i)) return "Copying files";
+    if (cmd.match(/^mv\s/i)) return "Moving files";
+    if (cmd.match(/^cat\s/i)) return `Reading ${getTarget(cmd)}`;
+    if (cmd.match(/^curl\s/i)) return "Making HTTP request";
+    if (cmd.match(/^wget\s/i)) return "Downloading file";
+    if (cmd.match(/^find\s/i)) return "Searching for files";
+    if (cmd.match(/^grep\s/i)) return "Searching file contents";
+    if (cmd.match(/^tail\s/i)) return `Watching ${getTarget(cmd)}`;
+    if (cmd.match(/^head\s/i)) return `Reading start of ${getTarget(cmd)}`;
+    if (cmd.match(/^echo\s/i)) return "Printing output";
+    if (cmd.match(/^touch\s/i)) return `Creating ${getTarget(cmd)}`;
+    if (cmd.match(/^chmod\s/i)) return "Changing permissions";
+    if (cmd.match(/^chown\s/i)) return "Changing ownership";
+
+    // build tools
+    if (cmd.match(/^tsc/i)) return "Compiling TypeScript";
+    if (cmd.match(/^tauri\s+build/i)) return "Building Tauri application";
+    if (cmd.match(/^tauri\s+dev/i)) return "Starting Tauri dev mode";
+    if (cmd.match(/^vite\s+build/i)) return "Building with Vite";
+    if (cmd.match(/^vite\s+dev/i)) return "Starting Vite dev server";
+    if (cmd.match(/^webpack/i)) return "Bundling with Webpack";
+    if (cmd.match(/^esbuild/i)) return "Bundling with esbuild";
+    if (cmd.match(/^rollup/i)) return "Bundling with Rollup";
+
+    // Fallback: truncate long commands
+    if (cmd.length > 35) {
+      return cmd.substring(0, 32) + "...";
     }
     return cmd;
   }
 
-  // For file operations, show just the filename
-  if (tool === "Read" || tool === "Write" || tool === "Edit") {
-    const fileMatch = desc.match(/[/\\]([^/\\]+)$/);
-    if (fileMatch) return fileMatch[1];
+  // File operations
+  if (tool === "Read") return `Reading ${getFileName(desc)}`;
+  if (tool === "Write") return `Writing ${getFileName(desc)}`;
+  if (tool === "Edit") return `Editing ${getFileName(desc)}`;
+  if (tool === "Glob") return "Searching files";
+  if (tool === "Grep") return "Searching content";
+  if (tool === "WebFetch") return "Fetching web page";
+  if (tool === "WebSearch") return "Searching the web";
+  if (tool === "LSP") return "Analyzing code";
+  if (tool === "TodoWrite") return "Updating task list";
+
+  // For agents/skills, use description as-is
+  if (tool === "Task" || tool === "Subagent" || tool === "Skill") {
+    let summary = desc.trim();
+    if (summary.length > 0) {
+      summary = summary.charAt(0).toUpperCase() + summary.slice(1);
+    }
+    if (summary.length > 35) {
+      return summary.substring(0, 32) + "...";
+    }
+    return summary;
   }
 
-  // Truncate any long description
-  if (desc.length > 50) {
-    return desc.substring(0, 47) + "...";
+  // Default
+  if (desc.length > 35) {
+    return desc.substring(0, 32) + "...";
   }
-
   return desc;
-}
-
-function extractPath(desc: string, tool: string): string | null {
-  if (!desc) return null;
-
-  // For file operations, extract the directory
-  if (tool === "Read" || tool === "Write" || tool === "Edit" || tool === "Glob" || tool === "Grep") {
-    // Match full path and extract directory
-    const pathMatch = desc.match(/^(.+)[/\\][^/\\]+$/);
-    if (pathMatch) {
-      let dir = pathMatch[1];
-      // Shorten home directory
-      dir = dir.replace(/^C:[/\\]Users[/\\][^/\\]+/, "~");
-      // Shorten long paths - show last 2 segments
-      const segments = dir.split(/[/\\]/);
-      if (segments.length > 3) {
-        return ".../" + segments.slice(-2).join("/");
-      }
-      return dir;
-    }
-  }
-
-  // For Bash, try to extract cd path or working directory
-  if (tool === "Bash") {
-    const cdMatch = desc.match(/cd\s+["']?([^"'&]+)["']?/);
-    if (cdMatch) {
-      let dir = cdMatch[1].trim();
-      dir = dir.replace(/^C:[/\\]Users[/\\][^/\\]+/, "~");
-      const segments = dir.split(/[/\\]/);
-      if (segments.length > 3) {
-        return ".../" + segments.slice(-2).join("/");
-      }
-      return dir;
-    }
-  }
-
-  return null;
 }
 
 const TOOL_CONFIG: Record<string, { label: string; icon: string }> = {
   Bash: { label: "Terminal", icon: "terminal" },
   Task: { label: "Agent", icon: "cpu" },
   Subagent: { label: "Agent", icon: "cpu" },
+  Skill: { label: "Skill", icon: "wand" },
   Read: { label: "Reading", icon: "file" },
   Write: { label: "Writing", icon: "pencil" },
   Edit: { label: "Editing", icon: "edit" },
@@ -106,16 +214,27 @@ const TOOL_CONFIG: Record<string, { label: string; icon: string }> = {
   TodoWrite: { label: "Planning", icon: "list" },
 };
 
-function getToolLabel(tool: string, subagentType?: string): string {
+function getToolLabel(tool: string, subagentType?: string, description?: string): string {
+  // Handle agents with subagent type
   if ((tool === "Task" || tool === "Subagent") && subagentType) {
     const agentNames: Record<string, string> = {
       Explore: "Explorer",
       Plan: "Planner",
       "general-purpose": "Agent",
-      Bash: "Terminal Agent",
+      Bash: "Terminal",
     };
     return agentNames[subagentType] || subagentType;
   }
+
+  // Handle skills - extract skill name from description
+  if (tool === "Skill" && description) {
+    // Description usually contains the skill name
+    const skillMatch = description.match(/^(\w+[-\w]*)/);
+    if (skillMatch) {
+      return `/${skillMatch[1]}`;
+    }
+  }
+
   return TOOL_CONFIG[tool]?.label || tool;
 }
 
@@ -174,6 +293,13 @@ function getToolIcon(tool: string): JSX.Element {
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect width="6" height="6" x="3" y="5" rx="1" /><path d="m3 17 2 2 4-4" />
         <path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />
+      </svg>
+    ),
+    wand: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" />
+        <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" />
+        <path d="M17.8 6.2 19 5" /><path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
       </svg>
     ),
     info: (
@@ -241,14 +367,16 @@ export function TaskCard({ task }: TaskCardProps) {
         </div>
 
         <div className="flex-1 min-w-0">
+          {/* Tool label badge */}
           <div className="flex items-center gap-2">
             <span
-              className={`text-xs font-medium truncate ${
-                isActive ? "text-overlay-text" : "text-overlay-muted"
+              className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                isActive
+                  ? "bg-overlay-accent/20 text-overlay-accent"
+                  : "bg-overlay-muted/20 text-overlay-muted"
               }`}
-              title={task.description}
             >
-              {cleanDescription(task.description, task.tool)}
+              {getToolLabel(task.tool, task.subagentType, task.description)}
             </span>
             {task.background && (
               <span className="px-1 py-0.5 text-[9px] bg-overlay-accent/10 text-overlay-accent rounded">
@@ -256,28 +384,16 @@ export function TaskCard({ task }: TaskCardProps) {
               </span>
             )}
           </div>
-
-          <div className="flex items-center gap-2 mt-0.5">
+          {/* Summary description */}
+          <div className="mt-1">
             <span
-              className={`text-[10px] ${
-                isActive ? "text-overlay-muted" : "text-overlay-muted/70"
+              className={`text-xs ${
+                isActive ? "text-overlay-text" : "text-overlay-muted"
               }`}
+              title={task.description}
             >
-              {getToolLabel(task.tool, task.subagentType)}
+              {getSummary(task.description, task.tool)}
             </span>
-            {extractPath(task.description, task.tool) && (
-              <>
-                <span className="text-overlay-muted/40">•</span>
-                <span
-                  className={`text-[10px] truncate ${
-                    isActive ? "text-overlay-muted/70" : "text-overlay-muted/50"
-                  }`}
-                  title={task.description}
-                >
-                  {extractPath(task.description, task.tool)}
-                </span>
-              </>
-            )}
           </div>
 
           <div className="flex items-center justify-between mt-1">
