@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles/notification.css";
@@ -121,6 +122,16 @@ export function NotificationWindow() {
       }
     }
   }, []);
+
+  // Show window once content is ready (prevents flash)
+  useEffect(() => {
+    if (task) {
+      // Small delay to ensure CSS is applied
+      requestAnimationFrame(() => {
+        invoke("show_notification_ready").catch(console.error);
+      });
+    }
+  }, [task]);
 
   // Listen for progress updates
   useEffect(() => {

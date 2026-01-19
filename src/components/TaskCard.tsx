@@ -312,8 +312,20 @@ function getToolIcon(tool: string): JSX.Element {
   return icons[iconType] || icons.info;
 }
 
+function isDownloadTask(desc: string): boolean {
+  const lowerDesc = desc.toLowerCase();
+  return (
+    lowerDesc.includes("curl") ||
+    lowerDesc.includes("wget") ||
+    lowerDesc.includes("download") ||
+    lowerDesc.includes("fetching") ||
+    lowerDesc.match(/https?:\/\//) !== null
+  );
+}
+
 export function TaskCard({ task }: TaskCardProps) {
   const [elapsed, setElapsed] = useState(0);
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   useEffect(() => {
     if (task.status !== "active") {
@@ -329,6 +341,35 @@ export function TaskCard({ task }: TaskCardProps) {
 
     return () => clearInterval(interval);
   }, [task.status, task.startTime, task.endTime]);
+
+  // Handle download progress - use real progress if available, otherwise animate
+  const isDownload = isDownloadTask(task.description);
+  const hasRealProgress = task.downloadProgress !== undefined && task.downloadProgress > 0;
+
+  useEffect(() => {
+    // If we have real progress from the wrapper, use it
+    if (hasRealProgress) {
+      setDownloadProgress(task.downloadProgress!);
+      return;
+    }
+
+    if (!isDownload || task.status !== "active") {
+      setDownloadProgress(task.status === "completed" ? 100 : 0);
+      return;
+    }
+
+    // Fallback: Smooth animation that slows down as it approaches 90%
+    const interval = setInterval(() => {
+      setDownloadProgress((prev) => {
+        if (prev >= 90) return prev + 0.1; // Slow crawl near end
+        if (prev >= 70) return prev + 0.5;
+        if (prev >= 50) return prev + 1;
+        return prev + 2;
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isDownload, task.status, hasRealProgress, task.downloadProgress]);
 
   const isActive = task.status === "active";
   const isError = task.status === "error";
@@ -395,6 +436,16 @@ export function TaskCard({ task }: TaskCardProps) {
               {getSummary(task.description, task.tool)}
             </span>
           </div>
+
+          {/* Progress bar for downloads */}
+          {isDownload && (
+            <div className="mt-1.5 w-full h-1.5 bg-overlay-border/30 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-100"
+                style={{ width: `${Math.min(downloadProgress, 100)}%` }}
+              />
+            </div>
+          )}
 
           <div className="flex items-center justify-between mt-1">
             <span

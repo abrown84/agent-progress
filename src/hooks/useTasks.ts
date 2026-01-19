@@ -11,6 +11,7 @@ export interface Task {
   background: boolean;
   subagentType?: string;
   sessionId?: string;
+  downloadProgress?: number;
 }
 
 interface TaskEvent {
@@ -23,6 +24,14 @@ interface TaskEvent {
   background?: boolean;
   subagent_type?: string;
   duration_ms?: number;
+}
+
+interface DownloadProgressEvent {
+  task_id: string;
+  percent: number;
+  speed?: string;
+  eta?: string;
+  timestamp: number;
 }
 
 const MAX_COMPLETED_TASKS = 5;
@@ -118,6 +127,42 @@ export function useTasks() {
       unlisten.then((fn) => fn());
     };
   }, [resetHideTimer]);
+
+  // Listen for download progress updates
+  useEffect(() => {
+    const unlisten = listen<DownloadProgressEvent>("download-progress", (event) => {
+      const data = event.payload;
+      console.log("[useTasks] Download progress:", data.percent, "%");
+
+      // Find active download tasks and update their progress
+      setTasks((prev) => {
+        // Find any active task that looks like a download
+        let updated = false;
+        const next = new Map(prev);
+
+        for (const [id, task] of next) {
+          if (task.status === "active") {
+            const desc = task.description.toLowerCase();
+            if (
+              desc.includes("curl") ||
+              desc.includes("wget") ||
+              desc.includes("download")
+            ) {
+              next.set(id, { ...task, downloadProgress: data.percent });
+              updated = true;
+              break; // Only update the first matching download task
+            }
+          }
+        }
+
+        return updated ? next : prev;
+      });
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // Keep visible while tasks are active
   useEffect(() => {

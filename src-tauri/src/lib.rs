@@ -33,6 +33,7 @@ struct FileWatcherState {
     last_position: u64,
     last_size: u64,
     last_todos_modified: Option<std::time::SystemTime>,
+    last_download_progress_modified: Option<std::time::SystemTime>,
 }
 
 // Track active notification windows
@@ -69,6 +70,22 @@ fn get_todos_file_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".claude")
         .join("todos.json")
+}
+
+fn get_download_progress_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".claude")
+        .join("download-progress.json")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    pub task_id: String,
+    pub percent: f64,
+    pub speed: Option<String>,
+    pub eta: Option<String>,
+    pub timestamp: u64,
 }
 
 fn read_todos(path: &PathBuf) -> Option<Vec<TodoItem>> {
@@ -187,6 +204,12 @@ fn show_window(window: WebviewWindow) {
 }
 
 #[tauri::command]
+fn show_notification_ready(window: WebviewWindow) {
+    // Called by notification window when content is loaded
+    let _ = window.show();
+}
+
+#[tauri::command]
 fn close_app(app: AppHandle) {
     app.exit(0);
 }
@@ -270,6 +293,7 @@ fn create_notification_window(
         .skip_taskbar(true)
         .focused(false)
         .resizable(false)
+        .visible(false)  // Start hidden, show when content is ready
         .build()
     {
         Ok(_) => {
@@ -345,6 +369,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             hide_window,
             show_window,
+            show_notification_ready,
             close_app,
             clear_events,
             toggle_devtools,
@@ -418,6 +443,7 @@ pub fn run() {
 fn start_file_poller(app: AppHandle) {
     let events_path = get_events_file_path();
     let todos_path = get_todos_file_path();
+    let download_progress_path = get_download_progress_path();
 
     // Ensure parent directory exists
     if let Some(parent) = events_path.parent() {
@@ -437,10 +463,16 @@ fn start_file_poller(app: AppHandle) {
         .and_then(|m| m.modified())
         .ok();
 
+    // Get initial download progress modified time
+    let initial_download_progress_modified = fs::metadata(&download_progress_path)
+        .and_then(|m| m.modified())
+        .ok();
+
     let state = Arc::new(Mutex::new(FileWatcherState {
         last_position: initial_size,  // Start from end - only new events
         last_size: initial_size,
         last_todos_modified: initial_todos_modified,
+        last_download_progress_modified: initial_download_progress_modified,
     }));
 
     // Notification manager
@@ -519,6 +551,23 @@ fn start_file_poller(app: AppHandle) {
                     println!("[Overlay] Todos updated: {} items", todos.len());
                     if let Err(e) = app.emit("todos-update", &todos) {
                         eprintln!("[Overlay] Todos emit error: {}", e);
+                    }
+                }
+            }
+
+            // Check for download progress updates
+            let current_download_progress_modified = fs::metadata(&download_progress_path)
+                .and_then(|m| m.modified())
+                .ok();
+
+            if current_download_progress_modified != s.last_download_progress_modified {
+                s.last_download_progress_modified = current_download_progress_modified;
+                if let Ok(content) = fs::read_to_string(&download_progress_path) {
+                    if let Ok(progress) = serde_json::from_str::<DownloadProgress>(&content) {
+                        println!("[Overlay] Download progress: {}%", progress.percent);
+                        if let Err(e) = app.emit("download-progress", &progress) {
+                            eprintln!("[Overlay] Download progress emit error: {}", e);
+                        }
                     }
                 }
             }
