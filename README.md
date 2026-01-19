@@ -35,7 +35,7 @@ That's it! The overlay window will appear in the bottom-right corner of your scr
 
 ## How It Works
 
-1. The agent writes task events to `~/.claude/progress-events.jsonl`
+1. AI agents write task events to `~/.claude/progress-events.jsonl` (or any agent's progress events file)
 2. The overlay watches this file and displays tasks in real-time
 3. Shows tool being used, duration, and status (running/done/failed)
 
