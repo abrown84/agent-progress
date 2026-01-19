@@ -1,0 +1,30 @@
+{
+  "name": "progress-overlay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tauri dev",
+    "build": "tauri build",
+    "dev:frontend": "vite",
+    "build:frontend": "tsc && vite build",
+    "tauri": "tauri",
+    "help": "echo. && echo Available commands: && echo   npm start         - Run the app (development mode) && echo   npm run build     - Build production binary && echo   npm run dev:frontend  - Run frontend only (for UI work) && echo   npm run help      - Show this help && echo."
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.4.5",
+    "vite": "^5.3.1"
+  }
+}
