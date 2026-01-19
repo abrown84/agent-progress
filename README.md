@@ -1,6 +1,8 @@
 # Agent Progress
 
-A desktop overlay that displays real-time agent task progress in a floating window.
+A Windows desktop overlay that displays real-time agent task progress in a floating window.
+
+> **Platform:** Windows 10/11 (macOS and Linux support possible with minor adjustments)
 
 ![Tauri](https://img.shields.io/badge/Tauri-2.0-blue) ![React](https://img.shields.io/badge/React-18-61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6)
 
