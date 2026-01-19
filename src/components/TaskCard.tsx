@@ -18,44 +18,26 @@ function formatDuration(ms: number): string {
 function cleanDescription(desc: string, tool: string): string {
   if (!desc) return "Running...";
 
-  // For Bash commands, clean up and shorten
+  // For Bash commands, show the actual command (shortened if needed)
   if (tool === "Bash") {
-    // Remove echo commands, show just the message
-    const echoMatch = desc.match(/^echo\s+["']([^"']+)["']/);
-    if (echoMatch) return echoMatch[1];
+    // Remove cd prefix if command follows
+    let cmd = desc.replace(/^cd\s+["'][^"']+["']\s*&&\s*/, "").trim();
 
-    // For commands with &&, show first meaningful part
-    const parts = desc.split("&&").map(p => p.trim());
-    const firstCmd = parts[0];
-
-    // Extract command name
-    const cmdMatch = firstCmd.match(/^(\w+)/);
-    if (cmdMatch) {
-      const cmd = cmdMatch[1];
-      // Common commands with friendly names
-      const cmdNames: Record<string, string> = {
-        npm: "npm " + (firstCmd.match(/npm\s+(\w+)/)?.[1] || ""),
-        npx: "npx " + (firstCmd.match(/npx\s+(\w+)/)?.[1] || ""),
-        git: "git " + (firstCmd.match(/git\s+(\w+)/)?.[1] || ""),
-        cd: "Changing directory",
-        mkdir: "Creating folder",
-        rm: "Removing files",
-        cp: "Copying files",
-        mv: "Moving files",
-        cat: "Reading file",
-        tail: "Reading file tail",
-        head: "Reading file head",
-        sleep: "Waiting...",
-        taskkill: "Killing process",
-        cargo: "cargo " + (firstCmd.match(/cargo\s+(\w+)/)?.[1] || ""),
-      };
-      if (cmdNames[cmd]) return cmdNames[cmd];
+    // If it's just cd, show the path
+    if (desc.startsWith("cd ") && !desc.includes("&&")) {
+      const pathMatch = desc.match(/cd\s+["']?([^"']+)["']?/);
+      if (pathMatch) {
+        const path = pathMatch[1];
+        const lastPart = path.split(/[/\\]/).pop() || path;
+        return `cd ${lastPart}`;
+      }
     }
 
-    // Truncate long commands
-    if (desc.length > 40) {
-      return desc.substring(0, 37) + "...";
+    // Truncate long commands but show actual command
+    if (cmd.length > 45) {
+      return cmd.substring(0, 42) + "...";
     }
+    return cmd;
   }
 
   // For file operations, show just the filename

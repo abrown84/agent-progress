@@ -9,7 +9,7 @@ import { useSettings } from "./hooks/useSettings";
 function App() {
   const { activeTasks, completedTasks, isVisible, clearCompleted, setIsVisible } =
     useTasks();
-  const { settings, updateSetting, resetSettings, isLoaded } = useSettings();
+  const { settings, updateSetting, resetSettings } = useSettings();
   const [showSettings, setShowSettings] = useState(false);
 
   // Close settings with Escape key
