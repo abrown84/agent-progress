@@ -147,13 +147,10 @@ export function NotificationWindow() {
 
     const unlistenComplete = listen<TaskComplete>("task-complete", (event) => {
       if (event.payload.task_id === task.task_id) {
-        setProgress(100); // Fill bar to 100% on completion
+        setProgress(100);
         setStatus(event.payload.status);
-        // Auto-close after 2 seconds
-        setTimeout(async () => {
-          const win = getCurrentWindow();
-          await win.close();
-        }, 2000);
+        // Close immediately when task ends (backend also closes, this is a fallback)
+        getCurrentWindow().close().catch(console.error);
       }
     });
 
@@ -176,9 +173,8 @@ export function NotificationWindow() {
 
   if (!task) return null;
 
-  const isDownload = task.description?.includes("curl") ||
-                     task.description?.includes("wget") ||
-                     task.description?.toLowerCase().includes("download");
+  // Only show progress bar when we have real progress data
+  const hasRealProgress = progress !== null && progress > 0;
 
   return (
     <div className={`notification ${status}`}>
@@ -192,19 +188,19 @@ export function NotificationWindow() {
             {task.description || `Running ${task.tool}...`}
           </div>
 
-          {/* Progress bar for downloads or when progress is available */}
-          {(isDownload || progress !== null) && (
+          {/* Progress bar - only shows when real progress data exists */}
+          {hasRealProgress && (
             <div className="progress-container">
               <div
                 className="progress-bar"
-                style={{ width: `${progress ?? 0}%` }}
+                style={{ width: `${progress}%` }}
               />
             </div>
           )}
 
           <div className="notification-meta">
             <span className="notification-time">{formatDuration(elapsed)}</span>
-            {progress !== null && (
+            {hasRealProgress && (
               <span className="notification-progress">{Math.round(progress)}%</span>
             )}
             {status !== "active" && (
@@ -215,8 +211,8 @@ export function NotificationWindow() {
           </div>
         </div>
 
-        {/* Spinner for active tasks */}
-        {status === "active" && !progress && (
+        {/* Spinner for active tasks without progress */}
+        {status === "active" && !hasRealProgress && (
           <div className="notification-spinner">
             <div className="spinner" />
           </div>

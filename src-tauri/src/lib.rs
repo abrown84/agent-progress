@@ -342,22 +342,12 @@ fn close_notification_window(
     app: &AppHandle,
     manager: &mut NotificationManager,
     task_id: &str,
-    status: &str,
+    _status: &str,
 ) {
     if let Some(label) = manager.active_windows.remove(task_id) {
-        // Emit completion status to the window before closing
+        // Close immediately when task ends
         if let Some(window) = app.get_webview_window(&label) {
-            let _ = window.emit("task-complete", serde_json::json!({
-                "task_id": task_id,
-                "status": status
-            }));
-
-            // Close after delay to show completion state
-            let window_clone = window.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(2000));
-                let _ = window_clone.close();
-            });
+            let _ = window.close();
         }
         println!("[Overlay] Closing notification: {} for task {}", label, task_id);
     }
@@ -610,9 +600,9 @@ fn start_file_poller(app: AppHandle) {
                 s.last_download_progress_modified = current_download_progress_modified;
                 if let Ok(content) = fs::read_to_string(&download_progress_path) {
                     if let Ok(progress) = serde_json::from_str::<DownloadProgress>(&content) {
-                        println!("[Overlay] Download progress: {}%", progress.percent);
-                        if let Err(e) = app.emit("download-progress", &progress) {
-                            eprintln!("[Overlay] Download progress emit error: {}", e);
+                        // Emit to all windows explicitly
+                        for window in app.webview_windows().values() {
+                            let _ = window.emit("download-progress", &progress);
                         }
                     }
                 }
