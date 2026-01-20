@@ -38,8 +38,8 @@ struct FileWatcherState {
 
 // Track active notification windows
 struct NotificationManager {
-    // task_id -> window_label
-    active_windows: HashMap<String, String>,
+    // task_id -> (window_label, creation_time)
+    active_windows: HashMap<String, (String, std::time::Instant)>,
     // Counter for unique window labels
     window_counter: u64,
 }
@@ -323,11 +323,11 @@ fn create_notification_window(
         .skip_taskbar(true)
         .focused(false)
         .resizable(false)
-        .visible(false)  // Start hidden, show when content is ready
+        .visible(false)  // Start visible - CSS animation handles appearance
         .build()
     {
         Ok(_) => {
-            manager.active_windows.insert(event.task_id.clone(), label.clone());
+            manager.active_windows.insert(event.task_id.clone(), (label.clone(), std::time::Instant::now()));
             println!("[Overlay] Created notification window: {} for task {}", label, event.task_id);
             Some(label)
         }
@@ -338,18 +338,37 @@ fn create_notification_window(
     }
 }
 
+// Minimum time to show notification (so fast tasks are still visible)
+const MIN_NOTIFICATION_DISPLAY_MS: u64 = 2000;
+
 fn close_notification_window(
     app: &AppHandle,
     manager: &mut NotificationManager,
     task_id: &str,
     _status: &str,
 ) {
-    if let Some(label) = manager.active_windows.remove(task_id) {
-        // Close immediately when task ends
-        if let Some(window) = app.get_webview_window(&label) {
-            let _ = window.close();
+    if let Some((label, created_at)) = manager.active_windows.remove(task_id) {
+        let elapsed = created_at.elapsed().as_millis() as u64;
+
+        if elapsed < MIN_NOTIFICATION_DISPLAY_MS {
+            // Delay close so user can see the notification
+            let remaining = MIN_NOTIFICATION_DISPLAY_MS - elapsed;
+            let app_clone = app.clone();
+            let label_clone = label.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(remaining));
+                if let Some(window) = app_clone.get_webview_window(&label_clone) {
+                    let _ = window.close();
+                }
+            });
+            println!("[Overlay] Delaying close by {}ms: {} for task {}", remaining, label, task_id);
+        } else {
+            // Close immediately
+            if let Some(window) = app.get_webview_window(&label) {
+                let _ = window.close();
+            }
+            println!("[Overlay] Closing notification: {} for task {}", label, task_id);
         }
-        println!("[Overlay] Closing notification: {} for task {}", label, task_id);
     }
 
     // Reposition remaining windows to fill gaps
@@ -371,7 +390,7 @@ fn reposition_notification_windows(app: &AppHandle, manager: &NotificationManage
     };
 
     // Reposition each window
-    for (index, label) in manager.active_windows.values().enumerate() {
+    for (index, (label, _)) in manager.active_windows.values().enumerate() {
         if let Some(window) = app.get_webview_window(label) {
             let x = screen_width - NOTIFICATION_WIDTH - NOTIFICATION_PADDING;
             let y = screen_height - TASKBAR_HEIGHT - NOTIFICATION_PADDING
@@ -539,7 +558,7 @@ fn start_file_poller(app: AppHandle) {
                         }
                         "task_canceled" => {
                             // Close notification immediately for canceled tasks
-                            if let Some(label) = nm.active_windows.remove(&event.task_id) {
+                            if let Some((label, _)) = nm.active_windows.remove(&event.task_id) {
                                 if let Some(window) = app.get_webview_window(&label) {
                                     let _ = window.close();
                                 }
@@ -548,7 +567,7 @@ fn start_file_poller(app: AppHandle) {
                         }
                         "session_stopped" => {
                             // Close all active notifications when session is stopped
-                            let labels: Vec<String> = nm.active_windows.values().cloned().collect();
+                            let labels: Vec<String> = nm.active_windows.values().map(|(label, _)| label.clone()).collect();
                             for label in labels {
                                 if let Some(window) = app.get_webview_window(&label) {
                                     let _ = window.close();
