@@ -14,7 +14,9 @@ interface TaskData {
 
 interface ProgressUpdate {
   task_id: string;
-  progress: number; // 0-100
+  percent: number; // 0-100
+  speed?: string;
+  eta?: string;
 }
 
 interface TaskComplete {
@@ -137,14 +139,15 @@ export function NotificationWindow() {
   useEffect(() => {
     if (!task) return;
 
-    const unlistenProgress = listen<ProgressUpdate>("progress-update", (event) => {
+    const unlistenProgress = listen<ProgressUpdate>("download-progress", (event) => {
       if (event.payload.task_id === task.task_id) {
-        setProgress(event.payload.progress);
+        setProgress(event.payload.percent);
       }
     });
 
     const unlistenComplete = listen<TaskComplete>("task-complete", (event) => {
       if (event.payload.task_id === task.task_id) {
+        setProgress(100); // Fill bar to 100% on completion
         setStatus(event.payload.status);
         // Auto-close after 2 seconds
         setTimeout(async () => {

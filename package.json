@@ -1,7 +1,23 @@
 {
-  "name": "progress-overlay",
+  "name": "agent-progress-overlay",
   "version": "1.0.0",
-  "private": true,
+  "description": "A lightweight desktop overlay for visualizing AI agent task progress in real-time. Zero token usage - pure local visualization.",
+  "author": "Alex Brown",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abrown84/agent-progress-overlay"
+  },
+  "keywords": [
+    "ai-agent",
+    "claude",
+    "progress",
+    "overlay",
+    "tauri",
+    "desktop",
+    "visualization"
+  ],
+  "private": false,
   "type": "module",
   "scripts": {
     "start": "tauri dev",

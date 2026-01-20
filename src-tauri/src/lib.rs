@@ -65,11 +65,41 @@ fn get_events_file_path() -> PathBuf {
         .join("progress-events.jsonl")
 }
 
-fn get_todos_file_path() -> PathBuf {
+fn get_todos_dir_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".claude")
-        .join("todos.json")
+        .join("todos")
+}
+
+fn find_most_recent_todo_file() -> Option<PathBuf> {
+    let todos_dir = get_todos_dir_path();
+    if !todos_dir.exists() {
+        return None;
+    }
+
+    let mut most_recent: Option<(PathBuf, std::time::SystemTime)> = None;
+
+    if let Ok(entries) = fs::read_dir(&todos_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "json") {
+                if let Ok(metadata) = fs::metadata(&path) {
+                    if let Ok(modified) = metadata.modified() {
+                        match &most_recent {
+                            None => most_recent = Some((path, modified)),
+                            Some((_, best_time)) if modified > *best_time => {
+                                most_recent = Some((path, modified));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    most_recent.map(|(path, _)| path)
 }
 
 fn get_download_progress_path() -> PathBuf {
@@ -442,7 +472,7 @@ pub fn run() {
 
 fn start_file_poller(app: AppHandle) {
     let events_path = get_events_file_path();
-    let todos_path = get_todos_file_path();
+    let todos_dir = get_todos_dir_path();
     let download_progress_path = get_download_progress_path();
 
     // Ensure parent directory exists
@@ -458,8 +488,8 @@ fn start_file_poller(app: AppHandle) {
     // Start from end of file - only show new events from this point forward
     let initial_size = fs::metadata(&events_path).map(|m| m.len()).unwrap_or(0);
 
-    // Get initial todos modified time
-    let initial_todos_modified = fs::metadata(&todos_path)
+    // Get initial todos directory modified time
+    let initial_todos_modified = fs::metadata(&todos_dir)
         .and_then(|m| m.modified())
         .ok();
 
@@ -478,10 +508,12 @@ fn start_file_poller(app: AppHandle) {
     // Notification manager
     let notification_manager = Arc::new(Mutex::new(NotificationManager::new()));
 
-    // Emit initial todos if file exists
-    if let Some(todos) = read_todos(&todos_path) {
-        println!("[Overlay] Initial todos: {} items", todos.len());
-        let _ = app.emit("todos-update", &todos);
+    // Emit initial todos from most recent file
+    if let Some(todo_file) = find_most_recent_todo_file() {
+        if let Some(todos) = read_todos(&todo_file) {
+            println!("[Overlay] Initial todos from {:?}: {} items", todo_file.file_name(), todos.len());
+            let _ = app.emit("todos-update", &todos);
+        }
     }
 
     // Simple polling loop - check every 200ms
@@ -540,17 +572,31 @@ fn start_file_poller(app: AppHandle) {
                 }
             }
 
-            // Check for todos updates
-            let current_todos_modified = fs::metadata(&todos_path)
+            // Check for todos updates - watch the directory for changes
+            let current_todos_modified = fs::metadata(&todos_dir)
                 .and_then(|m| m.modified())
                 .ok();
 
-            if current_todos_modified != s.last_todos_modified {
-                s.last_todos_modified = current_todos_modified;
-                if let Some(todos) = read_todos(&todos_path) {
-                    println!("[Overlay] Todos updated: {} items", todos.len());
-                    if let Err(e) = app.emit("todos-update", &todos) {
-                        eprintln!("[Overlay] Todos emit error: {}", e);
+            // Also check if most recent file has changed
+            let todo_file_changed = if let Some(todo_file) = find_most_recent_todo_file() {
+                let file_modified = fs::metadata(&todo_file)
+                    .and_then(|m| m.modified())
+                    .ok();
+                file_modified != s.last_todos_modified
+            } else {
+                false
+            };
+
+            if current_todos_modified != s.last_todos_modified || todo_file_changed {
+                if let Some(todo_file) = find_most_recent_todo_file() {
+                    s.last_todos_modified = fs::metadata(&todo_file)
+                        .and_then(|m| m.modified())
+                        .ok();
+                    if let Some(todos) = read_todos(&todo_file) {
+                        println!("[Overlay] Todos updated from {:?}: {} items", todo_file.file_name(), todos.len());
+                        if let Err(e) = app.emit("todos-update", &todos) {
+                            eprintln!("[Overlay] Todos emit error: {}", e);
+                        }
                     }
                 }
             }

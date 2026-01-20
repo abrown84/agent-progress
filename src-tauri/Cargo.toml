@@ -1,8 +1,13 @@
 [package]
-name = "progress-overlay"
+name = "agent-progress-overlay"
 version = "1.0.0"
-description = "Claude Code progress overlay"
-authors = ["Alex Brown"]
+description = "A lightweight desktop overlay for visualizing AI agent task progress in real-time"
+authors = ["Alex Brown <konfliktquake@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/abrown84/agent-progress-overlay"
+readme = "../README.md"
+keywords = ["ai-agent", "progress", "overlay", "tauri", "visualization"]
+categories = ["visualization", "gui"]
 edition = "2021"
 
 [lib]
