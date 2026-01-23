@@ -32,3 +32,4 @@ src-tauri/gen/
 
 # TypeScript cache
 *.tsbuildinfo
+.serena/
