@@ -323,7 +323,7 @@ fn create_notification_window(
         .skip_taskbar(true)
         .focused(false)
         .resizable(false)
-        .visible(false)  // Start visible - CSS animation handles appearance
+        .visible(false)  // Start hidden - show after content loads to prevent white flash
         .build()
     {
         Ok(_) => {

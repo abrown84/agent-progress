@@ -128,9 +128,13 @@ export function NotificationWindow() {
   // Show window once content is ready (prevents flash)
   useEffect(() => {
     if (task) {
-      // Small delay to ensure CSS is applied
+      // Double RAF + small delay ensures CSS is fully painted before showing
       requestAnimationFrame(() => {
-        invoke("show_notification_ready").catch(console.error);
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            invoke("show_notification_ready").catch(console.error);
+          }, 16); // One frame delay after paint
+        });
       });
     }
   }, [task]);
