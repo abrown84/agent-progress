@@ -1,26 +1,48 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useShallow } from "zustand/shallow";
 import { Header } from "./components/Header";
-import { TaskList } from "./components/TaskList";
-import { TodoSection } from "./components/TodoSection";
+import { TaskList } from "./components/tasks/TaskList";
+import { TodoSection } from "./components/todos/TodoSection";
 import { Settings } from "./components/Settings";
-import { useTasks } from "./hooks/useTasks";
-import { useTodos } from "./hooks/useTodos";
-import { useSettings } from "./hooks/useSettings";
+import { useTaskStore, initTaskListeners } from "./stores/taskStore";
+import { initTodoListeners } from "./stores/todoStore";
+import { useSettingsStore, selectSettings } from "./stores/settingsStore";
+import { AUTO_HIDE_DELAY_MS } from "./utils/constants";
 
 function App() {
-  const { activeTasks, completedTasks, isVisible, clearCompleted, setIsVisible } =
-    useTasks();
-  const { todos } = useTodos();
-  const { settings, updateSetting, resetSettings } = useSettings();
+  // Task store - use shallow comparison for arrays
+  const { activeTasks, completedTasks, isVisible } = useTaskStore(
+    useShallow((s) => ({
+      activeTasks: s.activeTasks,
+      completedTasks: s.completedTasks,
+      isVisible: s.isVisible,
+    }))
+  );
+  const clearCompleted = useTaskStore((s) => s.clearCompleted);
+  const setIsVisible = useTaskStore((s) => s.setIsVisible);
+
+  // Settings store - use shallow comparison to avoid infinite loops
+  const settings = useSettingsStore(useShallow(selectSettings));
+  const updateSetting = useSettingsStore((s) => s.updateSetting);
+  const resetSettings = useSettingsStore((s) => s.resetSettings);
+
   const [showSettings, setShowSettings] = useState(false);
 
-  // Close settings with Escape key
+  // Initialize event listeners once
+  useEffect(() => {
+    const cleanupTasks = initTaskListeners();
+    const cleanupTodos = initTodoListeners();
+    return () => {
+      cleanupTasks();
+      cleanupTodos();
+    };
+  }, []);
+
+  // Close settings with Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && showSettings) {
-        setShowSettings(false);
-      }
+      if (e.key === "Escape" && showSettings) setShowSettings(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -32,7 +54,7 @@ function App() {
       const timer = setTimeout(() => {
         invoke("hide_window");
         setIsVisible(false);
-      }, 3000);
+      }, AUTO_HIDE_DELAY_MS);
       return () => clearTimeout(timer);
     }
   }, [settings.autoHide, activeTasks.length, isVisible, setIsVisible]);
@@ -47,10 +69,7 @@ function App() {
     await invoke("clear_events");
   };
 
-  // Filter completed tasks based on settings
-  const displayedCompletedTasks = completedTasks.slice(0, settings.maxRecentTasks);
-
-  // Calculate opacity (0-1 range)
+  const displayedCompleted = completedTasks.slice(0, settings.maxRecentTasks);
   const windowOpacity = isVisible ? settings.opacity / 100 : 0;
 
   return (
@@ -66,8 +85,8 @@ function App() {
         onMinimize={handleMinimize}
         onSettings={() => setShowSettings(true)}
       />
-      <TodoSection todos={todos} />
-      <TaskList activeTasks={activeTasks} completedTasks={displayedCompletedTasks} />
+      <TodoSection />
+      <TaskList activeTasks={activeTasks} completedTasks={displayedCompleted} />
 
       {showSettings && (
         <Settings

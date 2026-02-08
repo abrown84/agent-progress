@@ -28,9 +28,11 @@
     "help": "echo. && echo Available commands: && echo   npm start         - Run the app (development mode) && echo   npm run build     - Build production binary && echo   npm run dev:frontend  - Run frontend only (for UI work) && echo   npm run help      - Show this help && echo."
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.18",
     "@tauri-apps/api": "^2.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

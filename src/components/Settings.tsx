@@ -1,4 +1,4 @@
-import { Settings as SettingsType, WindowPosition } from "../hooks/useSettings";
+import type { Settings as SettingsType, WindowPosition } from "../types";
 
 interface SettingsProps {
   settings: SettingsType;
