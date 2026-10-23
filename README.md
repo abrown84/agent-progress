@@ -33,7 +33,7 @@ A lightweight Windows desktop overlay that displays real-time AI agent task prog
 Task summaries are generated **locally using pattern matching**, not AI:
 
 ```typescript
-// Example from TaskCard.tsx - no AI involved
+// Example from taskSummary.ts - no AI involved
 if (cmd.startsWith("git push")) return "Pushing to remote";
 if (cmd.startsWith("npm install")) return "Installing dependencies";
 if (cmd.startsWith("cargo build")) return "Building Rust project";
@@ -211,21 +211,24 @@ Settings persist in localStorage.
 
 ```
 progress-overlay/
-├── src/                     # React/TypeScript frontend
-│   ├── App.tsx              # Main overlay UI
+├── src/                       # React/TypeScript frontend
+│   ├── App.tsx                # Main overlay UI
 │   ├── NotificationWindow.tsx # Popup notifications
 │   ├── components/
-│   │   ├── TaskCard.tsx     # Task display + LOCAL summaries
-│   │   ├── TaskList.tsx     # Task list container
-│   │   └── TodoSection.tsx  # Todo tracking
-│   ├── hooks/
-│   │   ├── useTasks.ts      # Task event management
-│   │   └── useTodos.ts      # Todo state management
-│   └── index.css            # Tailwind styles
-├── src-tauri/               # Rust backend
-│   └── src/lib.rs           # File watching, windows, tray
-├── package.json             # Node dependencies
-└── Cargo.toml               # Rust dependencies
+│   │   ├── tasks/
+│   │   │   ├── TaskCard.tsx   # Task display
+│   │   │   └── TaskList.tsx   # Task list container
+│   │   └── todos/
+│   │       └── TodoSection.tsx # Todo tracking
+│   ├── stores/                # Zustand state (tasks, todos, settings)
+│   ├── utils/
+│   │   └── taskSummary.ts     # LOCAL command summaries
+│   └── styles/
+│       └── index.css          # Tailwind styles
+├── src-tauri/                 # Rust backend
+│   ├── src/lib.rs             # App setup, windows, tray
+│   └── Cargo.toml             # Rust dependencies
+└── package.json               # Node dependencies
 ```
 
 ## Building for Production
@@ -261,18 +264,19 @@ The release build is optimized with:
 
 To use with a different AI agent:
 
-1. **Change the event file path** in `src-tauri/src/lib.rs`:
+1. **Change the event file path** in `src-tauri/src/config.rs`:
    ```rust
-   fn get_events_file_path() -> PathBuf {
-       dirs::home_dir()
-           .join(".your-agent")
-           .join("events.jsonl")
+   fn default_events_file() -> String {
+       get_claude_dir()
+           .join("progress-events.jsonl")
+           .to_string_lossy()
+           .to_string()
    }
    ```
 
-2. **Add tool recognition** in `src/components/TaskCard.tsx`:
+2. **Add tool recognition** in `src/utils/taskSummary.ts`:
    ```typescript
-   const TOOL_INFO: Record<string, { label: string; icon: string }> = {
+   export const TOOL_CONFIG: Record<string, { label: string; icon: string }> = {
      YourTool: { label: "Your Tool", icon: "custom" },
    };
    ```
@@ -296,3 +300,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 **Note:** This project is not affiliated with Anthropic. It's an independent tool for visualizing AI agent progress.
+
+---
+
+Built by [Brown Industries](https://brwnindustries.com) · [Book an AI Ops Audit](https://brwnindustries.com/ai-ops)
