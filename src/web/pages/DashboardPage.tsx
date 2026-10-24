@@ -14,14 +14,34 @@ interface Props {
 const TOKEN_KEY = "ap-web-read-token";
 const URL_KEY = "ap-web-base-url";
 
+function readBootstrapFromLocation(): { baseUrl?: string; readToken?: string; autoConnect?: boolean } {
+  try {
+    const hash = window.location.hash; // e.g. #/dashboard?token=apr_…
+    const qIndex = hash.indexOf("?");
+    const params = new URLSearchParams(
+      qIndex >= 0 ? hash.slice(qIndex + 1) : window.location.search
+    );
+    const token = params.get("token") || undefined;
+    const base = params.get("base") || undefined;
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      if (base) localStorage.setItem(URL_KEY, base);
+    }
+    return { baseUrl: base || undefined, readToken: token, autoConnect: Boolean(token) };
+  } catch {
+    return {};
+  }
+}
+
 export function DashboardPage({ onGo }: Props) {
+  const boot = readBootstrapFromLocation();
   const [baseUrl, setBaseUrl] = useState(
-    () => localStorage.getItem(URL_KEY) || window.location.origin
+    () => boot.baseUrl || localStorage.getItem(URL_KEY) || window.location.origin
   );
   const [readToken, setReadToken] = useState(
-    () => localStorage.getItem(TOKEN_KEY) || ""
+    () => boot.readToken || localStorage.getItem(TOKEN_KEY) || ""
   );
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(() => Boolean(boot.autoConnect));
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
