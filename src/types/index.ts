@@ -45,6 +45,16 @@ export interface TodoItem {
 /** Window position options */
 export type WindowPosition = "bottom-right" | "bottom-left" | "top-right" | "top-left";
 
+/** Cloud workspace connection (desktop + web) */
+export interface CloudSettings {
+  enabled: boolean;
+  baseUrl: string;
+  readToken: string;
+  writeToken: string;
+  forwardLocalEvents: boolean;
+  agentName: string;
+}
+
 /** User-facing settings */
 export interface Settings {
   position: WindowPosition;
@@ -52,6 +62,7 @@ export interface Settings {
   opacity: number;
   maxRecentTasks: number;
   autoHide: boolean;
+  cloud: CloudSettings;
 }
 
 /** Tool display configuration */

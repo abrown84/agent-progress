@@ -1,19 +1,26 @@
-import { invoke } from "@tauri-apps/api/core";
+import { getActiveTransport } from "../transport/bootstrap";
 
 interface HeaderProps {
   activeTasks: number;
   onClear: () => void;
   onMinimize: () => void;
   onSettings: () => void;
+  showDesktopControls?: boolean;
 }
 
-export function Header({ activeTasks, onClear, onMinimize, onSettings }: HeaderProps) {
+export function Header({
+  activeTasks,
+  onClear,
+  onMinimize,
+  onSettings,
+  showDesktopControls = true,
+}: HeaderProps) {
   const handleClose = async () => {
-    await invoke("close_app");
+    await getActiveTransport()?.actions.closeApp?.();
   };
 
   const handleDevTools = async () => {
-    await invoke("toggle_devtools");
+    await getActiveTransport()?.actions.toggleDevtools?.();
   };
 
   return (
@@ -52,26 +59,28 @@ export function Header({ activeTasks, onClear, onMinimize, onSettings }: HeaderP
           </svg>
         </button>
 
-        <button
-          onClick={handleDevTools}
-          className="p-1 hover:bg-overlay-card rounded text-overlay-muted hover:text-overlay-text transition-colors"
-          title="Toggle DevTools"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {showDesktopControls && (
+          <button
+            onClick={handleDevTools}
+            className="p-1 hover:bg-overlay-card rounded text-overlay-muted hover:text-overlay-text transition-colors"
+            title="Toggle DevTools"
           >
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
+        )}
 
         <button
           onClick={onClear}
@@ -95,46 +104,50 @@ export function Header({ activeTasks, onClear, onMinimize, onSettings }: HeaderP
           </svg>
         </button>
 
-        <button
-          onClick={onMinimize}
-          className="p-1 hover:bg-overlay-card rounded text-overlay-muted hover:text-overlay-text transition-colors"
-          title="Minimize"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M5 12h14" />
-          </svg>
-        </button>
+        {showDesktopControls && (
+          <>
+            <button
+              onClick={onMinimize}
+              className="p-1 hover:bg-overlay-card rounded text-overlay-muted hover:text-overlay-text transition-colors"
+              title="Minimize"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12h14" />
+              </svg>
+            </button>
 
-        <button
-          onClick={handleClose}
-          className="p-1 hover:bg-red-500/20 rounded text-overlay-muted hover:text-red-400 transition-colors"
-          title="Close"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
-        </button>
+            <button
+              onClick={handleClose}
+              className="p-1 hover:bg-red-500/20 rounded text-overlay-muted hover:text-red-400 transition-colors"
+              title="Close"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

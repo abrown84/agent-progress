@@ -1,12 +1,12 @@
 {
   "name": "agent-progress-overlay",
-  "version": "1.0.0",
-  "description": "A lightweight desktop overlay for visualizing AI agent task progress in real-time. Zero token usage - pure local visualization.",
+  "version": "1.1.0",
+  "description": "Desktop overlay + cloud dashboard for AI agent task progress. Zero AI token usage in the app.",
   "author": "Alex Brown",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/abrown84/agent-progress-overlay"
+    "url": "https://github.com/abrown84/agent-progress"
   },
   "keywords": [
     "ai-agent",
@@ -15,7 +15,9 @@
     "overlay",
     "tauri",
     "desktop",
-    "visualization"
+    "visualization",
+    "sse",
+    "cloud"
   ],
   "private": false,
   "type": "module",
@@ -23,9 +25,13 @@
     "start": "tauri dev",
     "build": "tauri build",
     "dev:frontend": "vite",
+    "dev:web": "vite --config vite.config.web.ts",
     "build:frontend": "tsc && vite build",
+    "build:web": "tsc --noEmit && vite build --config vite.config.web.ts && mv dist-web/web.html dist-web/index.html",
+    "dev:server": "npm --prefix server run dev",
+    "smoke": "npm --prefix server run smoke",
     "tauri": "tauri",
-    "help": "echo. && echo Available commands: && echo   npm start         - Run the app (development mode) && echo   npm run build     - Build production binary && echo   npm run dev:frontend  - Run frontend only (for UI work) && echo   npm run help      - Show this help && echo."
+    "help": "echo Available commands: npm start | npm run build | npm run dev:frontend | npm run build:web | npm run dev:server | npm run smoke"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.18",

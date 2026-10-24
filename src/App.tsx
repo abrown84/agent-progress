@@ -1,17 +1,16 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useEffect, useRef } from "react";
 import { useShallow } from "zustand/shallow";
 import { Header } from "./components/Header";
 import { TaskList } from "./components/tasks/TaskList";
 import { TodoSection } from "./components/todos/TodoSection";
 import { Settings } from "./components/Settings";
-import { useTaskStore, initTaskListeners } from "./stores/taskStore";
-import { initTodoListeners } from "./stores/todoStore";
+import { useTaskStore } from "./stores/taskStore";
 import { useSettingsStore, selectSettings } from "./stores/settingsStore";
+import { initProgressTransport, getActiveTransport } from "./transport/bootstrap";
 import { AUTO_HIDE_DELAY_MS } from "./utils/constants";
+import { isTauriRuntime } from "./transport";
 
 function App() {
-  // Task store - use shallow comparison for arrays
   const { activeTasks, completedTasks, isVisible } = useTaskStore(
     useShallow((s) => ({
       activeTasks: s.activeTasks,
@@ -22,24 +21,40 @@ function App() {
   const clearCompleted = useTaskStore((s) => s.clearCompleted);
   const setIsVisible = useTaskStore((s) => s.setIsVisible);
 
-  // Settings store - use shallow comparison to avoid infinite loops
   const settings = useSettingsStore(useShallow(selectSettings));
   const updateSetting = useSettingsStore((s) => s.updateSetting);
+  const updateCloudSetting = useSettingsStore((s) => s.updateCloudSetting);
   const resetSettings = useSettingsStore((s) => s.resetSettings);
 
   const [showSettings, setShowSettings] = useState(false);
+  const transportEpoch = useRef(0);
 
-  // Initialize event listeners once
+  // Initialize / re-init transport when cloud settings change
   useEffect(() => {
-    const cleanupTasks = initTaskListeners();
-    const cleanupTodos = initTodoListeners();
-    return () => {
-      cleanupTasks();
-      cleanupTodos();
-    };
-  }, []);
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
+    const epoch = ++transportEpoch.current;
 
-  // Close settings with Escape
+    void (async () => {
+      cleanup = await initProgressTransport({ mode: "auto" });
+      if (cancelled || epoch !== transportEpoch.current) {
+        cleanup?.();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [
+    settings.cloud.enabled,
+    settings.cloud.baseUrl,
+    settings.cloud.readToken,
+    settings.cloud.writeToken,
+    settings.cloud.forwardLocalEvents,
+    settings.cloud.agentName,
+  ]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && showSettings) setShowSettings(false);
@@ -48,11 +63,11 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showSettings]);
 
-  // Auto-hide when idle
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     if (settings.autoHide && activeTasks.length === 0 && isVisible) {
       const timer = setTimeout(() => {
-        invoke("hide_window");
+        void getActiveTransport()?.actions.hideWindow?.();
         setIsVisible(false);
       }, AUTO_HIDE_DELAY_MS);
       return () => clearTimeout(timer);
@@ -60,17 +75,18 @@ function App() {
   }, [settings.autoHide, activeTasks.length, isVisible, setIsVisible]);
 
   const handleMinimize = async () => {
-    await invoke("hide_window");
+    await getActiveTransport()?.actions.hideWindow?.();
     setIsVisible(false);
   };
 
   const handleClear = async () => {
     clearCompleted();
-    await invoke("clear_events");
+    await getActiveTransport()?.actions.clearEvents?.();
   };
 
   const displayedCompleted = completedTasks.slice(0, settings.maxRecentTasks);
   const windowOpacity = isVisible ? settings.opacity / 100 : 0;
+  const desktop = isTauriRuntime();
 
   return (
     <div
@@ -84,6 +100,7 @@ function App() {
         onClear={handleClear}
         onMinimize={handleMinimize}
         onSettings={() => setShowSettings(true)}
+        showDesktopControls={desktop}
       />
       <TodoSection />
       <TaskList activeTasks={activeTasks} completedTasks={displayedCompleted} />
@@ -92,8 +109,10 @@ function App() {
         <Settings
           settings={settings}
           onUpdate={updateSetting}
+          onUpdateCloud={updateCloudSetting}
           onReset={resetSettings}
           onClose={() => setShowSettings(false)}
+          showDesktopSettings={desktop}
         />
       )}
     </div>
