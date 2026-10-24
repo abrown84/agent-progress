@@ -1,306 +1,203 @@
-# Agent Progress Overlay
+# Agent Progress
 
-A lightweight Windows desktop overlay that displays real-time AI agent task progress in a floating window.
+Real-time AI agent task progress — as a **Windows desktop overlay** (local `~/.claude` files) and a **self-hosted cloud dashboard** (multi-tenant API + SSE).
 
-![Tauri](https://img.shields.io/badge/Tauri-2.0-blue) ![React](https://img.shields.io/badge/React-18-61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6) ![License](https://img.shields.io/badge/License-MIT-green)
+![Tauri](https://img.shields.io/badge/Tauri-2.0-blue) ![React](https://img.shields.io/badge/React-18-61DAFB) ![Hono](https://img.shields.io/badge/Hono-4-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
-> **Platform:** Windows 10/11 (macOS and Linux support possible with minor adjustments)
+> **Built by [Brown Industries](https://brwnindustries.com)** · Deploy target: `progress.brwnindustries.com`
+
+## Zero AI tokens
+
+This product **never calls an LLM**. Summaries are local pattern matching. If model calls are ever needed, they must go through Alex’s One Gateway (`gemini-3.8-flash`) — not from this app.
+
+| What it does | What it doesn’t do |
+|--------------|-------------------|
+| Reads local event files / accepts agent POSTs | Call AI APIs |
+| Shows live tasks, todos, errors | Consume model tokens |
+| Streams updates over SSE | Depend on paid SaaS |
 
 ## Features
 
-- **Real-time task monitoring** - Watch AI agent operations as they happen
-- **Floating overlay** - Non-intrusive window that stays out of your way
-- **Smart summaries** - Human-readable descriptions of complex commands
-- **Download progress** - Track file downloads with progress bars
-- **Todo tracking** - See multi-step task progress
-- **Notification popups** - Get notified when tasks start/complete
-- **System tray** - Minimize to tray, easy access controls
-- **Customizable** - Position, opacity, auto-hide, and more
+- **Desktop overlay** — floating always-on-top window watching `~/.claude/progress-events.jsonl`
+- **Cloud API** — multi-tenant workspaces, write/read tokens, SQLite
+- **Web dashboard** — same React UI via a transport abstraction (Tauri vs fetch+SSE)
+- **Agent labels** — name + source (`claude-code`, `cursor-cloud`, `grok-bot`, …)
+- **Optional forwarder** — desktop can push local events to a cloud workspace
+- **Self-host** — Docker Compose + nginx; signups gateable via env
 
-## Zero Token Usage
-
-**This app consumes zero LLM/AI tokens.** It's a pure visualization tool:
-
-| What It Does | What It Doesn't Do |
-|--------------|-------------------|
-| Reads local event files | Make any API calls |
-| Displays task progress | Use any AI services |
-| Generates summaries locally | Consume tokens |
-| Watches filesystem | Connect to the internet |
-
-### How Summaries Work
-
-Task summaries are generated **locally using pattern matching**, not AI:
-
-```typescript
-// Example from taskSummary.ts - no AI involved
-if (cmd.startsWith("git push")) return "Pushing to remote";
-if (cmd.startsWith("npm install")) return "Installing dependencies";
-if (cmd.startsWith("cargo build")) return "Building Rust project";
-```
-
-The app recognizes 20+ command patterns and converts them to human-readable text entirely on your machine.
-
-## Quick Start
+## Quick start (desktop)
 
 ```bash
-# Install dependencies
 npm install
-
-# Run the app (development mode with hot-reload)
-npm start
+npm start          # Tauri overlay (dev)
+npm run build      # Production binary
 ```
 
-The overlay window will appear in the bottom-right corner of your screen.
+## Quick start (cloud / self-host)
 
-## Prerequisites
+```bash
+# 1) Install server deps
+cd server && npm install && cd ..
 
-- **Node.js** 18+ ([download](https://nodejs.org/))
-- **Rust** toolchain ([install](https://rustup.rs/))
-- **Windows**: WebView2 (pre-installed on Windows 10/11)
-- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
-- **Linux**: `webkit2gtk` and `libappindicator` packages
+# 2) Seed Alex’s owner account (prints write/read tokens once — store securely)
+cp .env.example .env   # edit SESSION_SECRET + SEED_OWNER_*
+cd server && npm run seed && cd ..
 
-## Commands
+# 3) Run API (serves web UI after build:web)
+npm run build:web
+cd server && npm run dev
+
+# 4) Smoke test (ingest → snapshot → SSE)
+npm run smoke
+```
+
+### Docker (nginx-ready)
+
+```bash
+cp .env.example .env
+# Set SESSION_SECRET, optional SEED_OWNER_EMAIL / SEED_OWNER_PASSWORD
+
+docker compose up --build -d
+# Listens on :8787 — put nginx in front for https://progress.brwnindustries.com
+```
+
+Example nginx upstream:
+
+```nginx
+server {
+  server_name progress.brwnindustries.com;
+  location / {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # SSE
+    proxy_set_header Connection '';
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding off;
+  }
+}
+```
+
+### Environment
+
+| Variable | Purpose |
+|----------|---------|
+| `SESSION_SECRET` | Signs dashboard session cookies |
+| `ALLOW_SIGNUPS` | `true`/`false` — public registration (default off) |
+| `SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD` | Auto-seed owner on boot / via `npm run seed` |
+| `DATABASE_PATH` | SQLite file (Compose volume `/data`) |
+| `CORS_ORIGIN` | Allowed browser origins |
+| `PUBLIC_WEB_DIR` | Static web build directory |
+
+**Never commit secrets.** Tokens are hashed at rest (SHA-256); plaintext is shown once at creation.
+
+## Agent reporting API
+
+Authenticate with a **write token** (`apw_…`) as `Authorization: Bearer …` or `X-API-Token`.
+
+### Copy-paste: report a task
+
+```bash
+export PROGRESS_URL="https://progress.brwnindustries.com"
+export WRITE_TOKEN="apw_YOUR_TOKEN"
+
+curl -sS -X POST "$PROGRESS_URL/api/events" \
+  -H "Authorization: Bearer $WRITE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent": { "name": "my-bot", "source": "claude-code", "label": "CI Agent" },
+    "events": [
+      {
+        "type": "task_started",
+        "task_id": "job-42",
+        "tool": "Bash",
+        "description": "npm test",
+        "timestamp": 1705678901234,
+        "session_id": "session-1"
+      }
+    ]
+  }'
+```
+
+Complete it:
+
+```bash
+curl -sS -X POST "$PROGRESS_URL/api/events" \
+  -H "Authorization: Bearer $WRITE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "task_complete",
+    "task_id": "job-42",
+    "duration_ms": 5000,
+    "timestamp": 1705678906234
+  }'
+```
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/events` | write token | Single event, batch, todos, or download progress |
+| `GET` | `/api/state` | read (or write) token | Workspace snapshot |
+| `GET` | `/api/events/stream` | read token | SSE live updates (`?token=` for browsers) |
+| `POST` | `/api/auth/login` | — | Email + password |
+| `POST` | `/api/auth/signup` | — | When `ALLOW_SIGNUPS=true` |
+| `POST` | `/api/auth/magic-link` | — | Magic-link ready (no mailer bundled) |
+| `GET` | `/api/workspaces` | session | List workspaces |
+| `POST` | `/api/workspaces/:id/tokens` | session | Mint read/write tokens |
+
+Accepted event `type` values: `task_started`, `task_complete`, `task_error`, `task_canceled`, `session_stopped`.  
+Also: `todos` array (`content`, `status`, `activeForm`) and `download` (`task_id`, `percent`, …).
+
+Rate limits apply per IP and per token. Invalid shapes return `400` with Zod details.
+
+## Desktop ↔ cloud
+
+In overlay **Settings → Cloud workspace**:
+
+1. Enable cloud and set **Server URL** + **read token** (`apr_…`) to mirror the dashboard live.
+2. Optionally set a **write token** and enable **Forward local ~/.claude events** so the desktop pushes file-watch events to the server.
+
+Local file watching keeps working either way.
+
+## Project layout
+
+```
+├── src/                 # Shared React UI + Zustand stores
+│   ├── transport/       # Tauri invoke/listen vs fetch+SSE (+ composite forwarder)
+│   └── web/             # Landing, auth, mobile-friendly dashboard
+├── src-tauri/           # Desktop overlay (Rust)
+├── server/              # Hono + SQLite multi-tenant API
+├── docker-compose.yml
+└── web.html             # Web entry (builds to dist-web/)
+```
+
+## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Run in development mode |
-| `npm run build` | Build production binary |
-| `npm run dev:frontend` | Run frontend only (UI development) |
-| `npm run help` | Show all available commands |
+| `npm start` | Desktop Tauri dev |
+| `npm run build` | Desktop production build |
+| `npm run dev:frontend` | Overlay UI only |
+| `npm run build:web` | Browser dashboard → `dist-web/` |
+| `npm run dev:web` | Web UI with `/api` proxy to `:8787` |
+| `npm run dev:server` | API on `:8787` |
+| `npm run smoke` | Ingest → state → SSE smoke test |
 
-## How It Works
+## Event format (local JSONL / API)
 
-```
-AI Agent (e.g., Claude Code)
-    │
-    ├── Writes events to ~/.claude/progress-events.jsonl
-    │
-    ▼
-Agent Progress Overlay
-    │
-    ├── Watches the JSONL file for changes
-    ├── Parses events (task_started, task_complete, task_error)
-    ├── Generates human-readable summaries (LOCAL pattern matching)
-    └── Displays in floating overlay window
-```
-
-The overlay is **completely passive** - it only reads files, never writes or sends data anywhere.
-
-## Standalone Usage
-
-The app requires **something** to write events to `~/.claude/progress-events.jsonl`. Options:
-
-### 1. With Claude Code (Primary Use Case)
-Claude Code automatically writes events when running. Just start the overlay and use Claude Code normally.
-
-### 2. With Custom Tools
-Any tool can write events in this format:
-
-```json
-{"type":"task_started","task_id":"unique-id","tool":"Bash","description":"npm install","timestamp":1705678901234,"session_id":"session-1"}
-{"type":"task_complete","task_id":"unique-id","duration_ms":5000,"timestamp":1705678906234}
-```
-
-### 3. For Testing/Demo
-Create a test event file:
-
-```bash
-echo '{"type":"task_started","task_id":"test-1","tool":"Bash","description":"echo Hello World","timestamp":'$(date +%s)000',"session_id":"demo"}' >> ~/.claude/progress-events.jsonl
-```
-
-## Event Format
-
-Events are JSONL (one JSON object per line):
-
-### task_started
-```json
-{
-  "type": "task_started",
-  "task_id": "unique-id",
-  "tool": "Bash",
-  "description": "npm install",
-  "timestamp": 1705678901234,
-  "session_id": "optional-session",
-  "background": false,
-  "subagent_type": "Explore"
-}
-```
-
-### task_complete
-```json
-{
-  "type": "task_complete",
-  "task_id": "unique-id",
-  "duration_ms": 5000,
-  "timestamp": 1705678906234
-}
-```
-
-### task_error
-```json
-{
-  "type": "task_error",
-  "task_id": "unique-id",
-  "timestamp": 1705678906234
-}
-```
-
-### session_stopped
-```json
-{
-  "type": "session_stopped",
-  "session_id": "session-id",
-  "timestamp": 1705678906234
-}
-```
-
-## Supported Tools
-
-The overlay recognizes these tool types and displays appropriate icons/labels:
-
-| Tool | Display | Icon |
-|------|---------|------|
-| Task (Explore) | Explorer Agent | Robot |
-| Task (Plan) | Planner Agent | Robot |
-| Task | Background Agent | Robot |
-| Skill | /skill-name | Wand |
-| Bash | Terminal | Terminal |
-| Read | Reading file.ext | File |
-| Write | Writing file.ext | Pencil |
-| Edit | Editing file.ext | Pencil |
-| Glob | Searching | Search |
-| Grep | Grep | Search |
-| WebFetch | Web Request | Globe |
-| WebSearch | Web Search | Globe |
-| TodoWrite | Planning | List |
-| LSP | Analyzing code | Code |
-
-Bash commands are further parsed to show human-readable summaries:
-- `git push origin main` → "Pushing to remote"
-- `npm install lodash` → "npm install lodash"
-- `cargo build --release` → "Building release"
-- `docker compose up` → "Starting containers"
-
-## Settings
-
-Click the gear icon to access settings:
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **Window Position** | Screen corner | bottom-right |
-| **Always on Top** | Stay above other windows | true |
-| **Opacity** | Window transparency (50-100%) | 95% |
-| **Recent Tasks** | Completed tasks to show (1-10) | 5 |
-| **Auto-hide** | Hide when no active tasks | false |
-
-Settings persist in localStorage.
-
-## Controls
-
-| Button | Action |
-|--------|--------|
-| **Settings** (gear) | Open settings panel |
-| **DevTools** | Open browser developer tools |
-| **Clear** | Clear completed tasks |
-| **Minimize** | Hide to system tray |
-| **Close** | Exit application |
-
-## Architecture
-
-```
-progress-overlay/
-├── src/                       # React/TypeScript frontend
-│   ├── App.tsx                # Main overlay UI
-│   ├── NotificationWindow.tsx # Popup notifications
-│   ├── components/
-│   │   ├── tasks/
-│   │   │   ├── TaskCard.tsx   # Task display
-│   │   │   └── TaskList.tsx   # Task list container
-│   │   └── todos/
-│   │       └── TodoSection.tsx # Todo tracking
-│   ├── stores/                # Zustand state (tasks, todos, settings)
-│   ├── utils/
-│   │   └── taskSummary.ts     # LOCAL command summaries
-│   └── styles/
-│       └── index.css          # Tailwind styles
-├── src-tauri/                 # Rust backend
-│   ├── src/lib.rs             # App setup, windows, tray
-│   └── Cargo.toml             # Rust dependencies
-└── package.json               # Node dependencies
-```
-
-## Building for Production
-
-```bash
-# Build optimized release binary
-npm run build
-
-# Output location (Windows)
-src-tauri/target/release/progress-overlay.exe
-
-# Output location (with installer)
-src-tauri/target/release/bundle/
-```
-
-The release build is optimized with:
-- LTO (Link-Time Optimization)
-- Single codegen unit
-- Symbol stripping
-- Size optimization
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Window doesn't appear | Check if `~/.claude/progress-events.jsonl` exists |
-| No tasks showing | Verify events are being written (tail the file) |
-| Rust compilation errors | Run `rustup update` to update Rust |
-| WebView2 missing | Download from [Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
-| Hot-reload stuck | Stop and restart `npm start` |
-
-## Adapting for Other Agents
-
-To use with a different AI agent:
-
-1. **Change the event file path** in `src-tauri/src/config.rs`:
-   ```rust
-   fn default_events_file() -> String {
-       get_claude_dir()
-           .join("progress-events.jsonl")
-           .to_string_lossy()
-           .to_string()
-   }
-   ```
-
-2. **Add tool recognition** in `src/utils/taskSummary.ts`:
-   ```typescript
-   export const TOOL_CONFIG: Record<string, { label: string; icon: string }> = {
-     YourTool: { label: "Your Tool", icon: "custom" },
-   };
-   ```
-
-3. **Write events** in the expected format from your agent.
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `npm run build` to verify
-5. Submit a pull request
+Same shapes as before — see `task_started` / `task_complete` / `task_error` / `session_stopped` in the curl examples above. Local path defaults to `~/.claude/progress-events.jsonl`.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-**Note:** This project is not affiliated with Anthropic. It's an independent tool for visualizing AI agent progress.
+MIT — see [LICENSE](LICENSE).
 
 ---
 
 Built by [Brown Industries](https://brwnindustries.com) · [Book an AI Ops Audit](https://brwnindustries.com/ai-ops)
+
+**Note:** Not affiliated with Anthropic.

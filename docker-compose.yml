@@ -1,0 +1,28 @@
+# Deploy behind nginx at progress.brwnindustries.com
+# Example upstream: proxy_pass http://127.0.0.1:8787;
+services:
+  agent-progress:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: agent-progress
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: "8787"
+      HOST: "0.0.0.0"
+      DATABASE_PATH: /data/agent-progress.db
+      PUBLIC_WEB_DIR: /app/dist-web
+      ALLOW_SIGNUPS: "${ALLOW_SIGNUPS:-false}"
+      SESSION_SECRET: "${SESSION_SECRET:?Set SESSION_SECRET in .env}"
+      SEED_OWNER_EMAIL: "${SEED_OWNER_EMAIL:-}"
+      SEED_OWNER_PASSWORD: "${SEED_OWNER_PASSWORD:-}"
+      SEED_WORKSPACE_NAME: "${SEED_WORKSPACE_NAME:-Alex Workspace}"
+      SEED_WORKSPACE_SLUG: "${SEED_WORKSPACE_SLUG:-alex}"
+      CORS_ORIGIN: "${CORS_ORIGIN:-https://progress.brwnindustries.com}"
+    volumes:
+      - agent-progress-data:/data
+
+volumes:
+  agent-progress-data:

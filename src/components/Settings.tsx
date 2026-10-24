@@ -1,10 +1,12 @@
-import type { Settings as SettingsType, WindowPosition } from "../types";
+import type { CloudSettings, Settings as SettingsType, WindowPosition } from "../types";
 
 interface SettingsProps {
   settings: SettingsType;
   onUpdate: <K extends keyof SettingsType>(key: K, value: SettingsType[K]) => void;
+  onUpdateCloud: <K extends keyof CloudSettings>(key: K, value: CloudSettings[K]) => void;
   onReset: () => void;
   onClose: () => void;
+  showDesktopSettings?: boolean;
 }
 
 const POSITION_OPTIONS: { value: WindowPosition; label: string }[] = [
@@ -14,10 +16,18 @@ const POSITION_OPTIONS: { value: WindowPosition; label: string }[] = [
   { value: "top-left", label: "Top Left" },
 ];
 
-export function Settings({ settings, onUpdate, onReset, onClose }: SettingsProps) {
+export function Settings({
+  settings,
+  onUpdate,
+  onUpdateCloud,
+  onReset,
+  onClose,
+  showDesktopSettings = true,
+}: SettingsProps) {
+  const cloud = settings.cloud;
+
   return (
     <div className="absolute inset-0 bg-overlay-bg z-50 flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-overlay-border">
         <span className="text-xs font-medium text-overlay-text">Settings</span>
         <button
@@ -36,58 +46,49 @@ export function Settings({ settings, onUpdate, onReset, onClose }: SettingsProps
         </button>
       </div>
 
-      {/* Settings List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
-        {/* Position */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-overlay-muted">Window Position</label>
-          <select
-            value={settings.position}
-            onChange={(e) => onUpdate("position", e.target.value as WindowPosition)}
-            className="w-full bg-overlay-card border border-overlay-border rounded px-2 py-1.5 text-xs text-overlay-text focus:outline-none focus:border-overlay-accent"
-          >
-            {POSITION_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {showDesktopSettings && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs text-overlay-muted">Window Position</label>
+              <select
+                value={settings.position}
+                onChange={(e) => onUpdate("position", e.target.value as WindowPosition)}
+                className="w-full bg-overlay-card border border-overlay-border rounded px-2 py-1.5 text-xs text-overlay-text focus:outline-none focus:border-overlay-accent"
+              >
+                {POSITION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Always on Top */}
-        <div className="flex items-center justify-between">
-          <label className="text-xs text-overlay-muted">Always on Top</label>
-          <button
-            onClick={() => onUpdate("alwaysOnTop", !settings.alwaysOnTop)}
-            className={`w-10 h-5 rounded-full transition-colors ${
-              settings.alwaysOnTop ? "bg-overlay-accent" : "bg-overlay-card border border-overlay-border"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                settings.alwaysOnTop ? "translate-x-5" : "translate-x-0.5"
-              }`}
-            />
-          </button>
-        </div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-overlay-muted">Always on Top</label>
+              <Toggle
+                on={settings.alwaysOnTop}
+                onToggle={() => onUpdate("alwaysOnTop", !settings.alwaysOnTop)}
+              />
+            </div>
 
-        {/* Opacity */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-overlay-muted">Opacity</label>
-            <span className="text-xs text-overlay-text">{settings.opacity}%</span>
-          </div>
-          <input
-            type="range"
-            min="50"
-            max="100"
-            value={settings.opacity}
-            onChange={(e) => onUpdate("opacity", Number(e.target.value))}
-            className="w-full h-1.5 bg-overlay-card rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-overlay-accent"
-          />
-        </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-overlay-muted">Opacity</label>
+                <span className="text-xs text-overlay-text">{settings.opacity}%</span>
+              </div>
+              <input
+                type="range"
+                min="50"
+                max="100"
+                value={settings.opacity}
+                onChange={(e) => onUpdate("opacity", Number(e.target.value))}
+                className="w-full h-1.5 bg-overlay-card rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-overlay-accent"
+              />
+            </div>
+          </>
+        )}
 
-        {/* Max Recent Tasks */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <label className="text-xs text-overlay-muted">Recent Tasks</label>
@@ -103,28 +104,88 @@ export function Settings({ settings, onUpdate, onReset, onClose }: SettingsProps
           />
         </div>
 
-        {/* Auto-hide */}
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-xs text-overlay-muted block">Auto-hide when idle</label>
-            <span className="text-[10px] text-overlay-muted/60">Hide when no active tasks</span>
+        {showDesktopSettings && (
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs text-overlay-muted block">Auto-hide when idle</label>
+              <span className="text-[10px] text-overlay-muted/60">Hide when no active tasks</span>
+            </div>
+            <Toggle on={settings.autoHide} onToggle={() => onUpdate("autoHide", !settings.autoHide)} />
           </div>
-          <button
-            onClick={() => onUpdate("autoHide", !settings.autoHide)}
-            className={`w-10 h-5 rounded-full transition-colors ${
-              settings.autoHide ? "bg-overlay-accent" : "bg-overlay-card border border-overlay-border"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                settings.autoHide ? "translate-x-5" : "translate-x-0.5"
-              }`}
+        )}
+
+        {/* Cloud workspace */}
+        <div className="pt-2 border-t border-overlay-border space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs text-overlay-text block font-medium">Cloud workspace</label>
+              <span className="text-[10px] text-overlay-muted/60">
+                Connect to a hosted Agent Progress server
+              </span>
+            </div>
+            <Toggle
+              on={cloud.enabled}
+              onToggle={() => onUpdateCloud("enabled", !cloud.enabled)}
             />
-          </button>
+          </div>
+
+          {cloud.enabled && (
+            <div className="space-y-2">
+              <Field
+                label="Server URL"
+                value={cloud.baseUrl}
+                placeholder="https://progress.brwnindustries.com"
+                onChange={(v) => onUpdateCloud("baseUrl", v)}
+              />
+              <Field
+                label="Read token (apr_…)"
+                value={cloud.readToken}
+                placeholder="apr_…"
+                type="password"
+                onChange={(v) => onUpdateCloud("readToken", v)}
+              />
+              {showDesktopSettings && (
+                <>
+                  <Field
+                    label="Write token (apw_…) for forwarder"
+                    value={cloud.writeToken}
+                    placeholder="apw_…"
+                    type="password"
+                    onChange={(v) => onUpdateCloud("writeToken", v)}
+                  />
+                  <Field
+                    label="Agent name"
+                    value={cloud.agentName}
+                    placeholder="desktop"
+                    onChange={(v) => onUpdateCloud("agentName", v)}
+                  />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-xs text-overlay-muted block">
+                        Forward local ~/.claude events
+                      </label>
+                      <span className="text-[10px] text-overlay-muted/60">
+                        Push desktop events to the cloud workspace
+                      </span>
+                    </div>
+                    <Toggle
+                      on={cloud.forwardLocalEvents}
+                      onToggle={() =>
+                        onUpdateCloud("forwardLocalEvents", !cloud.forwardLocalEvents)
+                      }
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
+
+        <p className="text-[10px] text-overlay-muted/50 pt-2">
+          Built by Brown Industries · No AI model calls in this app
+        </p>
       </div>
 
-      {/* Footer */}
       <div className="px-3 py-2 border-t border-overlay-border">
         <button
           onClick={onReset}
@@ -133,6 +194,50 @@ export function Settings({ settings, onUpdate, onReset, onClose }: SettingsProps
           Reset to Defaults
         </button>
       </div>
+    </div>
+  );
+}
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`w-10 h-5 rounded-full transition-colors ${
+        on ? "bg-overlay-accent" : "bg-overlay-card border border-overlay-border"
+      }`}
+    >
+      <div
+        className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
+          on ? "translate-x-5" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs text-overlay-muted">{label}</label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-overlay-card border border-overlay-border rounded px-2 py-1.5 text-xs text-overlay-text focus:outline-none focus:border-overlay-accent"
+      />
     </div>
   );
 }

@@ -6,6 +6,14 @@ export const DEFAULT_SETTINGS: Settings = {
   opacity: 95,
   maxRecentTasks: 5,
   autoHide: false,
+  cloud: {
+    enabled: false,
+    baseUrl: "",
+    readToken: "",
+    writeToken: "",
+    forwardLocalEvents: false,
+    agentName: "desktop",
+  },
 };
 
 export const STORAGE_KEY = "progress-overlay-settings";

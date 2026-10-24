@@ -1,18 +1,19 @@
 import { create } from "zustand";
-import { listen } from "@tauri-apps/api/event";
 import type { Task, TaskEvent, DownloadProgressEvent } from "../types";
+import type { WorkspaceSnapshot } from "../transport/types";
 import { MAX_COMPLETED_TASKS, STALE_THRESHOLD_MS, STALE_CLEANUP_INTERVAL_MS } from "../utils/constants";
 
 interface TaskState {
-  // Store derived arrays directly to avoid re-computation issues
   activeTasks: Task[];
   completedTasks: Task[];
   isVisible: boolean;
+  connectionStatus: "idle" | "connected" | "disconnected" | "error";
+  connectionDetail?: string;
+  agents: WorkspaceSnapshot["agents"];
+  errors: NonNullable<WorkspaceSnapshot["errors"]>;
 
-  // Internal task map (not directly subscribed to)
   _taskMap: Map<string, Task>;
 
-  // Actions
   addTask: (event: TaskEvent) => void;
   completeTask: (taskId: string, timestamp: number, isError: boolean) => void;
   cancelTask: (taskId: string) => void;
@@ -21,9 +22,15 @@ interface TaskState {
   setIsVisible: (visible: boolean) => void;
   updateDownloadProgress: (taskId: string, percent: number) => void;
   cleanupStaleTasks: () => void;
+  applySnapshot: (state: WorkspaceSnapshot) => void;
+  handleTaskEvent: (data: TaskEvent) => void;
+  handleDownload: (data: DownloadProgressEvent) => void;
+  setConnection: (
+    status: TaskState["connectionStatus"],
+    detail?: string
+  ) => void;
 }
 
-// Helper to derive active/completed arrays from map
 function deriveTaskArrays(taskMap: Map<string, Task>) {
   const tasks = Array.from(taskMap.values());
   return {
@@ -35,17 +42,19 @@ function deriveTaskArrays(taskMap: Map<string, Task>) {
   };
 }
 
-export const useTaskStore = create<TaskState>()((set) => ({
+export const useTaskStore = create<TaskState>()((set, get) => ({
   activeTasks: [],
   completedTasks: [],
   isVisible: true,
+  connectionStatus: "idle",
+  agents: [],
+  errors: [],
   _taskMap: new Map(),
 
   addTask: (event) =>
     set((state) => {
       const taskMap = new Map(state._taskMap);
 
-      // Clean up stale active tasks from same session
       if (event.session_id) {
         for (const [id, task] of taskMap) {
           if (
@@ -151,64 +160,91 @@ export const useTaskStore = create<TaskState>()((set) => ({
       }
       return { _taskMap: taskMap, ...deriveTaskArrays(taskMap) };
     }),
-}));
 
-/** Initialize Tauri event listeners - call once at app startup */
-export function initTaskListeners(): () => void {
-  const unlisteners: Promise<() => void>[] = [];
+  applySnapshot: (state) => {
+    const taskMap = new Map<string, Task>();
+    for (const t of state.activeTasks || []) {
+      taskMap.set(t.id, {
+        id: t.id,
+        tool: t.tool,
+        description: t.description,
+        startTime: t.startTime,
+        status: "active",
+        background: t.background,
+        subagentType: t.subagentType,
+        sessionId: t.sessionId,
+        downloadProgress: t.downloadProgress,
+      });
+    }
+    for (const t of state.recentTasks || []) {
+      if (t.status === "canceled") continue;
+      taskMap.set(t.id, {
+        id: t.id,
+        tool: t.tool,
+        description: t.description,
+        startTime: t.startTime,
+        endTime: t.endTime,
+        status: t.status === "error" ? "error" : "completed",
+        background: t.background,
+        subagentType: t.subagentType,
+        sessionId: t.sessionId,
+      });
+    }
+    set({
+      _taskMap: taskMap,
+      ...deriveTaskArrays(taskMap),
+      agents: state.agents || [],
+      errors: state.errors || [],
+      isVisible: true,
+    });
+  },
 
-  // Task events from backend
-  unlisteners.push(
-    listen<TaskEvent>("task-event", (event) => {
-      const data = event.payload;
-      const store = useTaskStore.getState();
+  handleTaskEvent: (data) => {
+    const store = get();
+    switch (data.type) {
+      case "task_started":
+        store.addTask(data);
+        break;
+      case "task_complete":
+        store.completeTask(data.task_id, data.timestamp, false);
+        break;
+      case "task_error":
+        store.completeTask(data.task_id, data.timestamp, true);
+        break;
+      case "task_canceled":
+        store.cancelTask(data.task_id);
+        break;
+      case "session_stopped":
+        store.clearSession();
+        break;
+    }
+  },
 
-      switch (data.type) {
-        case "task_started":
-          store.addTask(data);
+  handleDownload: (data) => {
+    const taskMap = get()._taskMap;
+    if (taskMap.has(data.task_id)) {
+      get().updateDownloadProgress(data.task_id, data.percent);
+      return;
+    }
+    for (const [id, task] of taskMap) {
+      if (task.status === "active") {
+        const desc = task.description.toLowerCase();
+        if (desc.includes("curl") || desc.includes("wget") || desc.includes("download")) {
+          get().updateDownloadProgress(id, data.percent);
           break;
-        case "task_complete":
-          store.completeTask(data.task_id, data.timestamp, false);
-          break;
-        case "task_error":
-          store.completeTask(data.task_id, data.timestamp, true);
-          break;
-        case "task_canceled":
-          store.cancelTask(data.task_id);
-          break;
-        case "session_stopped":
-          store.clearSession();
-          break;
-      }
-    })
-  );
-
-  // Download progress
-  unlisteners.push(
-    listen<DownloadProgressEvent>("download-progress", (event) => {
-      const data = event.payload;
-      const taskMap = useTaskStore.getState()._taskMap;
-
-      // Find active download task
-      for (const [id, task] of taskMap) {
-        if (task.status === "active") {
-          const desc = task.description.toLowerCase();
-          if (desc.includes("curl") || desc.includes("wget") || desc.includes("download")) {
-            useTaskStore.getState().updateDownloadProgress(id, data.percent);
-            break;
-          }
         }
       }
-    })
-  );
+    }
+  },
 
-  // Periodic stale cleanup
+  setConnection: (status, detail) => set({ connectionStatus: status, connectionDetail: detail }),
+}));
+
+/** @deprecated Prefer initProgressTransport from transport bootstrap */
+export function initTaskListeners(): () => void {
+  console.warn("initTaskListeners is deprecated; use initProgressTransport");
   const cleanupInterval = setInterval(() => {
     useTaskStore.getState().cleanupStaleTasks();
   }, STALE_CLEANUP_INTERVAL_MS);
-
-  return () => {
-    unlisteners.forEach((p) => p.then((fn) => fn()));
-    clearInterval(cleanupInterval);
-  };
+  return () => clearInterval(cleanupInterval);
 }
