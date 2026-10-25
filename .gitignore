@@ -3,12 +3,18 @@ node_modules/
 
 # Build outputs
 dist/
+dist-web/
 src-tauri/target/
+data/
+*.db
+server/node_modules/
 
 # Environment
 .env
-.env.*
 .env.local
+.env.*.local
+# Keep templates:
+!.env.example
 
 # IDE
 .idea/
