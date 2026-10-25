@@ -39,4 +39,8 @@ export const config = {
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || "",
   vapidSubject: process.env.VAPID_SUBJECT || "mailto:alex@brwnindustries.com",
   seedWorkspaceSlug: process.env.SEED_WORKSPACE_SLUG || "alex",
+  // BRWN Text relay: mirrors push alerts to the paired Android phone as native notifications.
+  relayNotifyUrl: process.env.RELAY_NOTIFY_URL || "",
+  relayNotifyToken: process.env.RELAY_NOTIFY_TOKEN || "",
+  publicUrl: process.env.PUBLIC_URL || "https://progress.brwnindustries.com",
 };

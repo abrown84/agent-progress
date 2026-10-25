@@ -24,6 +24,8 @@ services:
       VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
       VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:alex@brwnindustries.com}"
       CORS_ORIGIN: "${CORS_ORIGIN:-https://progress.brwnindustries.com}"
+      RELAY_NOTIFY_URL: "${RELAY_NOTIFY_URL:-}"
+      RELAY_NOTIFY_TOKEN: "${RELAY_NOTIFY_TOKEN:-}"
     volumes:
       - agent-progress-data:/data
 
