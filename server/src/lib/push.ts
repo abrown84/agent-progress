@@ -45,7 +45,7 @@ export function notifyTaskEvent(
   event: TaskEvent
 ): void {
   const title = NOTIFY_TYPES[event.type];
-  if (!title || !pushEnabled()) return;
+  if (!title || (!pushEnabled() && !relayEnabled())) return;
   // Background subagent chatter is noisy; still notify on errors/decisions.
   let agentName = "";
   if (agentId) {
@@ -55,12 +55,46 @@ export function notifyTaskEvent(
     agentName = row?.label || row?.name || "";
   }
   const what = [event.tool, event.description].filter(Boolean).join(": ");
-  void sendToWorkspace(workspaceId, {
+  const msg: PushMessage = {
     title: agentName ? `${title} · ${agentName}` : title,
     body: (what || "Agent update").slice(0, 180),
     tag: event.task_id ? `task-${event.task_id}` : undefined,
     url: "/#/dashboard",
-  }).catch((e) => console.warn("[push] send failed:", (e as Error).message));
+  };
+  if (pushEnabled()) {
+    void sendToWorkspace(workspaceId, msg).catch((e) =>
+      console.warn("[push] send failed:", (e as Error).message)
+    );
+  }
+  void sendToRelay(msg);
+}
+
+export function relayEnabled(): boolean {
+  return Boolean(config.relayNotifyUrl && config.relayNotifyToken);
+}
+
+/** Forward an alert to the BRWN Text relay, which delivers it to the paired phone. Never throws. */
+export async function sendToRelay(msg: PushMessage): Promise<boolean> {
+  if (!relayEnabled()) return false;
+  const link = msg.url
+    ? new URL(msg.url, config.publicUrl).toString()
+    : config.publicUrl;
+  try {
+    const res = await fetch(config.relayNotifyUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.relayNotifyToken}`,
+      },
+      body: JSON.stringify({ title: msg.title, body: msg.body, link, source: "agent-progress" }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) console.warn(`[relay] notify HTTP ${res.status}`);
+    return res.ok;
+  } catch (e) {
+    console.warn("[relay] notify failed:", (e as Error).message);
+    return false;
+  }
 }
 
 export async function sendToWorkspace(
