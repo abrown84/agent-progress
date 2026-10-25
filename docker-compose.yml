@@ -20,6 +20,9 @@ services:
       SEED_OWNER_PASSWORD: "${SEED_OWNER_PASSWORD:-}"
       SEED_WORKSPACE_NAME: "${SEED_WORKSPACE_NAME:-Alex Workspace}"
       SEED_WORKSPACE_SLUG: "${SEED_WORKSPACE_SLUG:-alex}"
+      VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+      VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:alex@brwnindustries.com}"
       CORS_ORIGIN: "${CORS_ORIGIN:-https://progress.brwnindustries.com}"
     volumes:
       - agent-progress-data:/data

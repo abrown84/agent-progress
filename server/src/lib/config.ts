@@ -35,5 +35,8 @@ export const config = {
   seedOwnerEmail: process.env.SEED_OWNER_EMAIL || "",
   seedOwnerPassword: process.env.SEED_OWNER_PASSWORD || "",
   seedWorkspaceName: process.env.SEED_WORKSPACE_NAME || "Alex Workspace",
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY || "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || "",
+  vapidSubject: process.env.VAPID_SUBJECT || "mailto:alex@brwnindustries.com",
   seedWorkspaceSlug: process.env.SEED_WORKSPACE_SLUG || "alex",
 };

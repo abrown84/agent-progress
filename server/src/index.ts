@@ -12,6 +12,7 @@ import { checkRateLimit } from "./lib/rateLimit.js";
 import { authRoutes } from "./routes/auth.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
 import { apiRoutes } from "./routes/events.js";
+import { pushRoutes } from "./routes/push.js";
 
 const app = new Hono();
 
@@ -57,11 +58,28 @@ app.get("/api/config/public", (c) =>
 
 app.route("/api/auth", authRoutes);
 app.route("/api/workspaces", workspaceRoutes);
+app.route("/api/push", pushRoutes);
 app.route("/api", apiRoutes);
 
 // Static web dashboard (landing + SPA)
 const webRoot = config.publicWebDir;
 if (fs.existsSync(webRoot)) {
+  // PWA assets: correct content types and no stale caching of the worker.
+  app.get("/manifest.webmanifest", (c) => {
+    const file = path.join(webRoot, "manifest.webmanifest");
+    if (!fs.existsSync(file)) return c.notFound();
+    c.header("Content-Type", "application/manifest+json");
+    c.header("Cache-Control", "no-cache");
+    return c.body(fs.readFileSync(file, "utf8"));
+  });
+  app.get("/sw.js", (c) => {
+    const file = path.join(webRoot, "sw.js");
+    if (!fs.existsSync(file)) return c.notFound();
+    c.header("Content-Type", "text/javascript; charset=utf-8");
+    c.header("Cache-Control", "no-cache");
+    c.header("Service-Worker-Allowed", "/");
+    return c.body(fs.readFileSync(file, "utf8"));
+  });
   app.use(
     "/*",
     serveStatic({
