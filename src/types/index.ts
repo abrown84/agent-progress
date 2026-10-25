@@ -14,7 +14,7 @@ export interface Task {
 
 /** Raw task event from the Rust backend */
 export interface TaskEvent {
-  type: "task_started" | "task_complete" | "task_error" | "task_canceled" | "session_stopped";
+  type: "task_started" | "task_complete" | "task_error" | "task_canceled" | "task_needs_input" | "session_stopped";
   task_id: string;
   tool?: string;
   description?: string;

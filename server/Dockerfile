@@ -14,6 +14,7 @@ RUN npm ci
 COPY index.html notification.html web.html vite.config.ts vite.config.web.ts \
      tsconfig.json tsconfig.node.json tailwind.config.js postcss.config.js ./
 COPY src ./src
+COPY web-public ./web-public
 RUN npm run build:web && test -f dist-web/index.html
 
 # Server

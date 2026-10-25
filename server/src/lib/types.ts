@@ -5,6 +5,7 @@ export const TASK_EVENT_TYPES = [
   "task_complete",
   "task_error",
   "task_canceled",
+  "task_needs_input",
   "session_stopped",
 ] as const;
 

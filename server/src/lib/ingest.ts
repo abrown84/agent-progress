@@ -1,6 +1,7 @@
 import { getDb } from "./db.js";
 import { generateId } from "./crypto.js";
 import { publish } from "./bus.js";
+import { notifyTaskEvent } from "./push.js";
 import type {
   AgentMeta,
   DownloadProgress,
@@ -139,6 +140,7 @@ export function applyTaskEvent(
   }
 
   publish(workspaceId, { kind: "task_event", agent_id: agentId, event });
+  notifyTaskEvent(workspaceId, agentId, event);
 }
 
 export function applyTodos(

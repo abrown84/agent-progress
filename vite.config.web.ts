@@ -5,6 +5,7 @@ import { resolve } from "path";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  publicDir: "web-public",
   server: {
     port: 5181,
     proxy: {

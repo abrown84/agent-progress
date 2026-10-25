@@ -6,6 +6,13 @@ import { useTaskStore } from "../../stores/taskStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { initProgressTransport } from "../../transport/bootstrap";
 import { createToken, listWorkspaces, logout, me } from "../api";
+import {
+  currentSubscription,
+  disablePush,
+  enablePush,
+  pushSupported,
+  sendTestPush,
+} from "../push";
 
 interface Props {
   onGo: (r: "landing" | "login" | "signup" | "dashboard") => void;
@@ -41,11 +48,16 @@ export function DashboardPage({ onGo }: Props) {
   const [readToken, setReadToken] = useState(
     () => boot.readToken || localStorage.getItem(TOKEN_KEY) || ""
   );
-  const [connected, setConnected] = useState(() => Boolean(boot.autoConnect));
+  const [connected, setConnected] = useState(
+    () => Boolean(boot.autoConnect) || Boolean(localStorage.getItem(TOKEN_KEY))
+  );
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [pushOn, setPushOn] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState("");
 
   const { activeTasks, completedTasks, agents, errors, connectionStatus } =
     useTaskStore(
@@ -72,6 +84,35 @@ export function DashboardPage({ onGo }: Props) {
         /* guest with token only */
       });
   }, []);
+
+  useEffect(() => {
+    void currentSubscription().then((sub) => setPushOn(Boolean(sub)));
+  }, []);
+
+  const togglePush = async () => {
+    if (!workspaceId) {
+      setPushMsg("Sign in first to enable notifications");
+      return;
+    }
+    setPushBusy(true);
+    setPushMsg("");
+    try {
+      if (pushOn) {
+        await disablePush();
+        setPushOn(false);
+        setPushMsg("Notifications off");
+      } else {
+        await enablePush(workspaceId);
+        setPushOn(true);
+        await sendTestPush(workspaceId).catch(() => {});
+        setPushMsg("Notifications on — a test was sent");
+      }
+    } catch (err) {
+      setPushMsg(err instanceof Error ? err.message : "Could not change notifications");
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!connected || !readToken) return;
@@ -223,6 +264,36 @@ export function DashboardPage({ onGo }: Props) {
               )}
             </div>
           </section>
+
+          {userEmail && (
+            <section className="rounded-lg border border-overlay-border bg-overlay-card/40 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Enable notifications</h2>
+                <button
+                  role="switch"
+                  aria-checked={pushOn}
+                  aria-label="Enable notifications"
+                  disabled={pushBusy || !pushSupported()}
+                  onClick={() => void togglePush()}
+                  className={`relative h-6 w-11 rounded-full transition-colors disabled:opacity-50 ${
+                    pushOn ? "bg-overlay-accent" : "bg-overlay-border"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                      pushOn ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-overlay-muted">
+                {pushSupported()
+                  ? "Push to this device when a task completes, fails, or needs a decision."
+                  : "Push isn't supported here. On Android, open in Chrome and add to home screen."}
+              </p>
+              {pushMsg && <p className="mt-2 text-xs text-overlay-accent">{pushMsg}</p>}
+            </section>
+          )}
 
           <section className="rounded-lg border border-overlay-border bg-overlay-card/40 p-4">
             <h2 className="text-sm font-semibold">Agents</h2>

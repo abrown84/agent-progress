@@ -131,5 +131,20 @@ function migrate(database: Database.Database): void {
       consumed_at INTEGER,
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL,
+      last_success_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_push_subs_workspace
+      ON push_subscriptions(workspace_id);
   `);
 }

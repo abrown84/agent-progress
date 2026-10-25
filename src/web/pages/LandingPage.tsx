@@ -1,9 +1,20 @@
+import { useEffect, useState } from "react";
+import { me } from "../api";
+
 interface Props {
   onGo: (r: "landing" | "login" | "signup" | "dashboard") => void;
   allowSignups: boolean;
 }
 
 export function LandingPage({ onGo, allowSignups }: Props) {
+  // Session-aware: the cookie session persists here, so don't present a signed-out UI.
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    void me()
+      .then((data) => setUserEmail(data?.user?.email ?? null))
+      .catch(() => setUserEmail(null));
+  }, []);
+
   return (
     <div className="web-hero-bg min-h-screen text-overlay-text relative overflow-hidden">
       <div className="web-grid absolute inset-0 pointer-events-none" />
@@ -11,13 +22,25 @@ export function LandingPage({ onGo, allowSignups }: Props) {
       <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-5 py-6">
         <div className="font-display text-2xl tracking-tight">Agent Progress</div>
         <nav className="flex items-center gap-3 text-sm">
-          <button
-            onClick={() => onGo("login")}
-            className="text-overlay-muted hover:text-overlay-text transition-colors"
-          >
-            Sign in
-          </button>
-          {allowSignups && (
+          {userEmail ? (
+            <>
+              <span className="hidden sm:inline text-overlay-muted">{userEmail}</span>
+              <button
+                onClick={() => onGo("dashboard")}
+                className="rounded bg-overlay-accent px-3 py-1.5 font-medium text-slate-950 hover:bg-amber-400 transition-colors"
+              >
+                Dashboard
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => onGo("login")}
+              className="text-overlay-muted hover:text-overlay-text transition-colors"
+            >
+              Sign in
+            </button>
+          )}
+          {!userEmail && allowSignups && (
             <button
               onClick={() => onGo("signup")}
               className="rounded bg-overlay-accent px-3 py-1.5 font-medium text-slate-950 hover:bg-amber-400 transition-colors"
@@ -46,12 +69,14 @@ export function LandingPage({ onGo, allowSignups }: Props) {
           >
             Open dashboard
           </button>
+{!userEmail && (
           <button
             onClick={() => onGo("login")}
             className="rounded border border-overlay-border px-5 py-2.5 text-sm text-overlay-text hover:bg-overlay-card transition-colors"
           >
             Sign in
           </button>
+          )}
         </div>
 
         <section className="mt-20 grid gap-8 md:grid-cols-3">
