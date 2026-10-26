@@ -146,5 +146,17 @@ function migrate(database: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_push_subs_workspace
       ON push_subscriptions(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS app_kv (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS workspace_notify_prefs (
+      workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+      notify_completions INTEGER NOT NULL DEFAULT 1,
+      quiet_until INTEGER,
+      updated_at INTEGER NOT NULL
+    );
   `);
 }

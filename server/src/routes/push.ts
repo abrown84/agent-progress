@@ -4,7 +4,15 @@ import { getDb } from "../lib/db.js";
 import { config } from "../lib/config.js";
 import { AuthError, requireSession, userCanAccessWorkspace } from "../lib/auth.js";
 import { generateId } from "../lib/crypto.js";
-import { pushEnabled, sendToWorkspace } from "../lib/push.js";
+import {
+  countSubscriptions,
+  getNotifyPrefs,
+  pushEnabled,
+  relayEnabled,
+  sendToRelay,
+  sendToWorkspace,
+  setNotifyPrefs,
+} from "../lib/push.js";
 
 export const pushRoutes = new Hono();
 
@@ -19,6 +27,60 @@ const subscribeSchema = z.object({
 pushRoutes.get("/vapid-public-key", (c) => {
   if (!pushEnabled()) return c.json({ enabled: false, publicKey: null });
   return c.json({ enabled: true, publicKey: config.vapidPublicKey });
+});
+
+pushRoutes.get("/status", (c) => {
+  const session = requireSession(c);
+  const workspaceId = c.req.query("workspaceId");
+  if (!workspaceId) return c.json({ error: "workspaceId required" }, 400);
+  if (!userCanAccessWorkspace(session.userId, workspaceId)) {
+    throw new AuthError(403, "No access to workspace");
+  }
+  const prefs = getNotifyPrefs(workspaceId);
+  return c.json({
+    pushEnabled: pushEnabled(),
+    relayEnabled: relayEnabled(),
+    publicUrl: config.publicUrl,
+    subscriptionCount: countSubscriptions(workspaceId),
+    mySubscriptionCount: countSubscriptions(workspaceId, session.userId),
+    prefs: {
+      notifyCompletions: prefs.notifyCompletions,
+      quietUntil: prefs.quietUntil,
+      quietActive: Boolean(prefs.quietUntil && prefs.quietUntil > Date.now()),
+    },
+  });
+});
+
+pushRoutes.patch("/prefs", async (c) => {
+  const session = requireSession(c);
+  const body = z
+    .object({
+      workspaceId: z.string().min(1),
+      notifyCompletions: z.boolean().optional(),
+      /** Minutes of quiet time from now; 0 clears quiet. */
+      quietMinutes: z.number().int().min(0).max(24 * 60).optional(),
+    })
+    .parse(await c.req.json());
+  if (!userCanAccessWorkspace(session.userId, body.workspaceId)) {
+    throw new AuthError(403, "No access to workspace");
+  }
+  const patch: { notifyCompletions?: boolean; quietUntil?: number | null } = {};
+  if (body.notifyCompletions !== undefined) {
+    patch.notifyCompletions = body.notifyCompletions;
+  }
+  if (body.quietMinutes !== undefined) {
+    patch.quietUntil =
+      body.quietMinutes === 0 ? null : Date.now() + body.quietMinutes * 60_000;
+  }
+  const prefs = setNotifyPrefs(body.workspaceId, patch);
+  return c.json({
+    ok: true,
+    prefs: {
+      notifyCompletions: prefs.notifyCompletions,
+      quietUntil: prefs.quietUntil,
+      quietActive: Boolean(prefs.quietUntil && prefs.quietUntil > Date.now()),
+    },
+  });
 });
 
 pushRoutes.post("/subscribe", async (c) => {
@@ -69,13 +131,39 @@ pushRoutes.post("/test", async (c) => {
   if (!userCanAccessWorkspace(session.userId, body.workspaceId)) {
     throw new AuthError(403, "No access to workspace");
   }
-  const result = await sendToWorkspace(body.workspaceId, {
+  if (!pushEnabled() && !relayEnabled()) {
+    return c.json({ error: "No notification channel configured" }, 503);
+  }
+  const msg = {
     title: "Agent Progress",
     body: "Notifications are working 🎉",
     tag: "test",
     url: "/#/dashboard",
+  };
+  const push = await sendToWorkspace(body.workspaceId, msg);
+  const relay = await sendToRelay(msg);
+  const mySubs = countSubscriptions(body.workspaceId, session.userId);
+  if (push.sent === 0 && !relay) {
+    return c.json(
+      {
+        ok: false,
+        error:
+          mySubs === 0
+            ? "No device subscribed yet — enable notifications on this phone first"
+            : "Push send failed (stale subscription?). Try disable → enable again.",
+        push,
+        relay,
+        mySubscriptionCount: mySubs,
+      },
+      400
+    );
+  }
+  return c.json({
+    ok: true,
+    push,
+    relay,
+    mySubscriptionCount: mySubs,
   });
-  return c.json({ ok: true, ...result });
 });
 
 pushRoutes.onError((err, c) => {
