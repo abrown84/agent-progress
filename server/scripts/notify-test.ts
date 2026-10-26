@@ -30,7 +30,7 @@ const { authRoutes } = await import("../src/routes/auth.js");
 const { workspaceRoutes } = await import("../src/routes/workspaces.js");
 const { pushRoutes } = await import("../src/routes/push.js");
 const { apiRoutes } = await import("../src/routes/events.js");
-  const {
+const {
   ensureVapidKeys,
   pushEnabled,
   shouldNotifyEvent,
@@ -40,7 +40,10 @@ const { apiRoutes } = await import("../src/routes/events.js");
   notifyTaskEvent,
   countSubscriptions,
   buildPushMessage,
+  countFcmDevices,
+  usersWithFcm,
 } = await import("../src/lib/push.js");
+const { upsertFcmToken } = await import("../src/lib/fcm.js");
 
 const app = new Hono();
 app.use("*", cors({ origin: "*", credentials: true }));
@@ -244,7 +247,31 @@ try {
   });
   assert(ingest.ok, `ingest needs_input failed ${ingest.status}`);
 
-  console.log("NOTIFY OK: vapid · filters · dedupe · prefs · subscribe · test · ingest");
+  // FCM device registration (no real Google call — just persistence + dedupe sets)
+  const fcmReg = await fetch(`${base}/api/push/fcm/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({
+      workspaceId: ws,
+      token: "fcm-test-token-" + "x".repeat(40),
+      platform: "android",
+    }),
+  });
+  assert(fcmReg.ok, `fcm register failed ${fcmReg.status} ${await fcmReg.text()}`);
+  assert(countFcmDevices(ws) === 1, "fcm device not stored");
+  assert(usersWithFcm(ws).has(seeded.userId), "fcm user set missing");
+  // Direct upsert for second token / same user
+  upsertFcmToken({
+    workspaceId: ws,
+    userId: seeded.userId,
+    token: "fcm-test-token-" + "y".repeat(40),
+  });
+  assert(countFcmDevices(ws) === 2, "second fcm token not stored");
+  assert(usersWithFcm(ws).size === 1, "dedupe should be per-user not per-token");
+
+  console.log(
+    "NOTIFY OK: vapid · filters · dedupe · prefs · subscribe · test · ingest · fcm-register"
+  );
   process.exitCode = 0;
 } catch (err) {
   console.error("NOTIFY FAILED:", err);

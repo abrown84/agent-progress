@@ -158,5 +158,19 @@ function migrate(database: Database.Database): void {
       quiet_until INTEGER,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS fcm_devices (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      platform TEXT NOT NULL DEFAULT 'android',
+      user_agent TEXT,
+      created_at INTEGER NOT NULL,
+      last_success_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_fcm_devices_workspace
+      ON fcm_devices(workspace_id);
   `);
 }

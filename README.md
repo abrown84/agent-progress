@@ -31,12 +31,13 @@ Intended for Alex at `https://progress.brwnindustries.com`.
 
 ### Android app (recommended)
 
-1. Install the **Agent Progress** APK (GitHub Actions artifact `agent-progress-apk`, or  
-   `https://progress.brwnindustries.com/android/agent-progress.apk` after the VPS packages it).
+1. Install the **Agent Progress** APK (`versionCode` 2+ native WebView app — upgrades over v1 TWA).  
+   Download: GitHub Actions artifact, or `https://progress.brwnindustries.com/android/agent-progress.apk`.
 2. Open the app → **sign in** → **Enable notifications** → allow → **Send test notification**.
 3. Done. Agents still report with one URL + one write token (below).
 
-Details: [`android/README.md`](android/README.md). Keystore lives **outside** git — see [`android/KEYSTORE.md`](android/KEYSTORE.md). No Firebase project required (TWA + Web Push).
+Native FCM needs a Firebase project from Alex — see [`android/FIREBASE.md`](android/FIREBASE.md).  
+Keystore outside git: [`android/KEYSTORE.md`](android/KEYSTORE.md). OTA: app checks `/android/latest.json`.
 
 ### Browser / agents
 
@@ -70,7 +71,7 @@ docker compose up --build -d
 - **Optional BRWN Text relay**: set `RELAY_NOTIFY_URL` + `RELAY_NOTIFY_TOKEN` to also mirror alerts to the Android BRWN Text app. Web Push alone is enough for phone alerts.
 - Confirm: `curl -s https://progress.brwnindustries.com/api/health` → `pushEnabled: true`.
 - nginx must terminate HTTPS (required for Web Push). Use `deploy/nginx.progress.brwnindustries.com.conf.example`.
-- **Android TWA**: redeploy so `/.well-known/assetlinks.json` is public (verifies the APK package). Optionally copy `artifacts/agent-progress.apk` → `dist-web/android/agent-progress.apk` before image build to offer an HTTPS download.
+- **Android**: `npm run publish:android` writes `dist-web/android/{agent-progress.apk,latest.json}`. On VPS `srv1417676` under `/opt/agent-progress`, rebuild/restart compose so those files and FCM env are live. Set `FCM_SERVICE_ACCOUNT_PATH` (see `android/FIREBASE.md`).
 
 ## Quick start (desktop)
 
@@ -246,7 +247,9 @@ Local file watching keeps working either way.
 | `npm run dev:server` | API on `:8787` |
 | `npm run smoke` | Ingest → state → SSE smoke test |
 | `npm test` | Smoke + notification-path tests |
-| `npm run build:android` | Signed TWA release APK → `artifacts/agent-progress.apk` |
+| `npm run build:android` | Signed native release APK → `artifacts/agent-progress.apk` |
+| `npm run publish:android` | APK + `/android/latest.json` OTA manifest → `dist-web/android/` |
+| `npm run test:android` | Android unit tests (UpdateChecker SHA-256) |
 
 ## Event format (local JSONL / API)
 

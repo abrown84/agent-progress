@@ -13,7 +13,7 @@ import { authRoutes } from "./routes/auth.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
 import { apiRoutes } from "./routes/events.js";
 import { pushRoutes } from "./routes/push.js";
-import { ensureVapidKeys, pushEnabled, relayEnabled } from "./lib/push.js";
+import { ensureVapidKeys, fcmEnabled, pushEnabled, relayEnabled } from "./lib/push.js";
 
 const app = new Hono();
 
@@ -45,6 +45,7 @@ app.get("/api/health", (c) =>
     branding: "Built by Brown Industries",
     pushEnabled: pushEnabled(),
     relayEnabled: relayEnabled(),
+    fcmEnabled: fcmEnabled(),
   })
 );
 
@@ -102,6 +103,15 @@ if (fs.existsSync(webRoot)) {
     c.header("Cache-Control", "no-cache");
     return c.body(fs.readFileSync(file));
   });
+  // OTA manifest for the native Android app.
+  app.get("/android/latest.json", (c) => {
+    const file = path.join(webRoot, "android", "latest.json");
+    if (!fs.existsSync(file)) return c.notFound();
+    c.header("Content-Type", "application/json");
+    c.header("Cache-Control", "no-cache");
+    return c.body(fs.readFileSync(file, "utf8"));
+  });
+
   app.use(
     "/*",
     serveStatic({
@@ -163,7 +173,7 @@ console.log(
 console.log(`SQLite: ${config.databasePath}`);
 console.log(`Signups: ${config.allowSignups ? "enabled" : "disabled"}`);
 console.log(
-  `Notifications: web-push=${pushEnabled() ? "on" : "off"} relay=${relayEnabled() ? "on" : "off"}`
+  `Notifications: web-push=${pushEnabled() ? "on" : "off"} fcm=${fcmEnabled() ? "on" : "off"} relay=${relayEnabled() ? "on" : "off"}`
 );
 
 serve({

@@ -32,8 +32,10 @@
     "smoke": "npm --prefix server run smoke",
     "test": "npm --prefix server run test",
     "build:android": "bash android/scripts/build-release.sh",
+    "publish:android": "bash android/scripts/publish-android.sh",
+    "test:android": "cd android && ./gradlew test",
     "tauri": "tauri",
-    "help": "echo Available commands: npm start | npm run build | npm run build:web | npm run build:android | npm run dev:server | npm run smoke | npm test"
+    "help": "echo Available commands: npm start | npm run build | npm run build:web | npm run build:android | npm run publish:android | npm run smoke | npm test"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.18",

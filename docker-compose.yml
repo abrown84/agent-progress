@@ -27,8 +27,13 @@ services:
       PUBLIC_URL: "${PUBLIC_URL:-https://progress.brwnindustries.com}"
       RELAY_NOTIFY_URL: "${RELAY_NOTIFY_URL:-}"
       RELAY_NOTIFY_TOKEN: "${RELAY_NOTIFY_TOKEN:-}"
+      FCM_PROJECT_ID: "${FCM_PROJECT_ID:-}"
+      FCM_SERVICE_ACCOUNT_PATH: "${FCM_SERVICE_ACCOUNT_PATH:-}"
+      FCM_SERVICE_ACCOUNT_JSON: "${FCM_SERVICE_ACCOUNT_JSON:-}"
     volumes:
       - agent-progress-data:/data
+      # Mount the Firebase service account when using FCM_SERVICE_ACCOUNT_PATH, e.g.:
+      # - /opt/agent-progress/secrets:/opt/agent-progress/secrets:ro
 
 volumes:
   agent-progress-data:

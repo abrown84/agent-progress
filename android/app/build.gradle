@@ -1,5 +1,7 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
 }
 
 def keystorePropertiesFile = file("${System.getenv('HOME')}/.config/agent-progress/keystore.properties")
@@ -8,7 +10,6 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
-// CI can pass ANDROID_KEYSTORE_PATH / passwords via env instead of the local properties file.
 def ciStoreFile = System.getenv('ANDROID_KEYSTORE_PATH')
 def ciStorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
 def ciKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
@@ -22,22 +23,16 @@ android {
         applicationId "com.brwnindustries.agentprogress"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 2
+        versionName "2.0.0"
 
-        // Hosted dashboard (TWA). Override at build time if needed:
-        // ./gradlew assembleRelease -PlauncherUrl=https://…
-        // Origin only — hash routes are applied by the web app (standalone → dashboard).
         def launcherUrl = project.findProperty('launcherUrl') ?: 'https://progress.brwnindustries.com/'
-        resValue "string", "launcherUrl", launcherUrl
-        resValue "string", "hostName", "progress.brwnindustries.com"
-        resValue "string", "assetStatements", """[{
-            "relation": ["delegate_permission/common.handle_all_urls"],
-            "target": {
-              "namespace": "web",
-              "site": "https://progress.brwnindustries.com"
-            }
-        }]"""
+        def updateManifestUrl = project.findProperty('updateManifestUrl') ?: 'https://progress.brwnindustries.com/android/latest.json'
+        buildConfigField "String", "LAUNCHER_URL", "\"${launcherUrl}\""
+        buildConfigField "String", "UPDATE_MANIFEST_URL", "\"${updateManifestUrl}\""
+        buildConfigField "String", "API_ORIGIN", "\"https://progress.brwnindustries.com\""
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -74,18 +69,29 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-}
-
-configurations.all {
-    resolutionStrategy {
-        force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24'
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    testOptions {
+        unitTests.includeAndroidResources = false
     }
 }
 
 dependencies {
-    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
-    implementation 'androidx.browser:browser:1.8.0'
+    implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.4'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    // Firebase Cloud Messaging (replace google-services.json with Alex's project)
+    implementation platform('com.google.firebase:firebase-bom:33.1.2')
+    implementation 'com.google.firebase:firebase-messaging-ktx'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit:1.9.24'
 }
