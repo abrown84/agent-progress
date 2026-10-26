@@ -85,6 +85,23 @@ if (fs.existsSync(webRoot)) {
     c.header("Service-Worker-Allowed", "/");
     return c.body(fs.readFileSync(file, "utf8"));
   });
+  // Digital Asset Links for the Android TWA (package verification → full Web Push).
+  app.get("/.well-known/assetlinks.json", (c) => {
+    const file = path.join(webRoot, ".well-known", "assetlinks.json");
+    if (!fs.existsSync(file)) return c.notFound();
+    c.header("Content-Type", "application/json");
+    c.header("Cache-Control", "no-cache");
+    return c.body(fs.readFileSync(file, "utf8"));
+  });
+  // Optional sideload APK (copied into dist-web/android/ during release packaging).
+  app.get("/android/agent-progress.apk", (c) => {
+    const file = path.join(webRoot, "android", "agent-progress.apk");
+    if (!fs.existsSync(file)) return c.notFound();
+    c.header("Content-Type", "application/vnd.android.package-archive");
+    c.header("Content-Disposition", 'attachment; filename="agent-progress.apk"');
+    c.header("Cache-Control", "no-cache");
+    return c.body(fs.readFileSync(file));
+  });
   app.use(
     "/*",
     serveStatic({

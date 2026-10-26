@@ -354,8 +354,17 @@ export function DashboardPage({ onGo }: Props) {
               <h2 className="text-sm font-semibold">1. Phone alerts</h2>
               <p className="mt-1 text-xs text-overlay-muted">
                 {pushSupported()
-                  ? "On this phone (Chrome): enable, allow permission, done. Optional: Add to Home screen for a more reliable background delivery."
-                  : "Open this site in Chrome on Android, then come back here."}
+                  ? "Install the Agent Progress APK (or open in Chrome): enable, allow permission, done. Tap a notification to jump back to the task."
+                  : "Install the Android APK or open this site in Chrome, then come back here."}
+              </p>
+              <p className="mt-1 text-[11px] text-overlay-muted">
+                APK:{" "}
+                <a
+                  className="text-overlay-accent hover:underline"
+                  href="/android/agent-progress.apk"
+                >
+                  Download Agent Progress
+                </a>
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {!pushOn ? (

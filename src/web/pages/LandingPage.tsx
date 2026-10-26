@@ -11,8 +11,18 @@ export function LandingPage({ onGo, allowSignups }: Props) {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   useEffect(() => {
     void me()
-      .then((data) => setUserEmail(data?.user?.email ?? null))
+      .then((data) => {
+        const email = data?.user?.email ?? null;
+        setUserEmail(email);
+        // TWA / installed PWA: skip marketing hero when already signed in.
+        const standalone =
+          window.matchMedia("(display-mode: standalone)").matches ||
+          (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+        if (email && standalone) onGo("dashboard");
+      })
       .catch(() => setUserEmail(null));
+    // Intentionally once on mount (TWA / session bootstrap).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

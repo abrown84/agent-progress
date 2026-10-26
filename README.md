@@ -29,9 +29,20 @@ This product **never calls an LLM**. Summaries are local pattern matching. If mo
 
 Intended for Alex at `https://progress.brwnindustries.com`.
 
-1. **Sign in** on your Android phone (Chrome) → open **Dashboard**.
+### Android app (recommended)
+
+1. Install the **Agent Progress** APK (GitHub Actions artifact `agent-progress-apk`, or  
+   `https://progress.brwnindustries.com/android/agent-progress.apk` after the VPS packages it).
+2. Open the app → **sign in** → **Enable notifications** → allow → **Send test notification**.
+3. Done. Agents still report with one URL + one write token (below).
+
+Details: [`android/README.md`](android/README.md). Keystore lives **outside** git — see [`android/KEYSTORE.md`](android/KEYSTORE.md). No Firebase project required (TWA + Web Push).
+
+### Browser / agents
+
+1. **Sign in** on your Android phone (Chrome) → open **Dashboard** (or use the APK above).
 2. Tap **Enable notifications** → allow the permission → you should get a test ping.  
-   Optional but recommended: Chrome menu → **Add to Home screen** (more reliable background delivery).
+   Optional: Chrome menu → **Add to Home screen**.
 3. Tap **Mint write token** (or use the token from seed) → copy **Report URL** + **Write token**.
 4. Point any agent at one URL + one token:
 
@@ -59,6 +70,7 @@ docker compose up --build -d
 - **Optional BRWN Text relay**: set `RELAY_NOTIFY_URL` + `RELAY_NOTIFY_TOKEN` to also mirror alerts to the Android BRWN Text app. Web Push alone is enough for phone alerts.
 - Confirm: `curl -s https://progress.brwnindustries.com/api/health` → `pushEnabled: true`.
 - nginx must terminate HTTPS (required for Web Push). Use `deploy/nginx.progress.brwnindustries.com.conf.example`.
+- **Android TWA**: redeploy so `/.well-known/assetlinks.json` is public (verifies the APK package). Optionally copy `artifacts/agent-progress.apk` → `dist-web/android/agent-progress.apk` before image build to offer an HTTPS download.
 
 ## Quick start (desktop)
 
@@ -217,6 +229,7 @@ Local file watching keeps working either way.
 │   └── web/             # Landing, auth, mobile-friendly dashboard
 ├── src-tauri/           # Desktop overlay (Rust)
 ├── server/              # Hono + SQLite multi-tenant API
+├── android/             # TWA APK (Brown branding, Web Push via Chrome)
 ├── docker-compose.yml
 └── web.html             # Web entry (builds to dist-web/)
 ```
@@ -233,6 +246,7 @@ Local file watching keeps working either way.
 | `npm run dev:server` | API on `:8787` |
 | `npm run smoke` | Ingest → state → SSE smoke test |
 | `npm test` | Smoke + notification-path tests |
+| `npm run build:android` | Signed TWA release APK → `artifacts/agent-progress.apk` |
 
 ## Event format (local JSONL / API)
 

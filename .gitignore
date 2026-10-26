@@ -39,3 +39,12 @@ src-tauri/gen/
 # TypeScript cache
 *.tsbuildinfo
 .serena/
+
+# Android / release binaries (APK is a CI artifact, not source)
+artifacts/
+*.apk
+*.aab
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
