@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.brwnindustries.agentprogress",
+      "sha256_cert_fingerprints": [
+        "56:B6:A5:E1:2C:63:19:E7:96:23:5F:DF:AA:F0:87:46:2E:3C:F9:11:5A:80:8C:32:36:DD:56:A3:0E:4B:D2:48"
+      ]
+    }
+  }
+]

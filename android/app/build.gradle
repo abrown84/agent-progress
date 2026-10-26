@@ -1,0 +1,91 @@
+plugins {
+    id 'com.android.application'
+}
+
+def keystorePropertiesFile = file("${System.getenv('HOME')}/.config/agent-progress/keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+// CI can pass ANDROID_KEYSTORE_PATH / passwords via env instead of the local properties file.
+def ciStoreFile = System.getenv('ANDROID_KEYSTORE_PATH')
+def ciStorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def ciKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def ciKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+
+android {
+    namespace 'com.brwnindustries.agentprogress'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.brwnindustries.agentprogress"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+
+        // Hosted dashboard (TWA). Override at build time if needed:
+        // ./gradlew assembleRelease -PlauncherUrl=https://…
+        // Origin only — hash routes are applied by the web app (standalone → dashboard).
+        def launcherUrl = project.findProperty('launcherUrl') ?: 'https://progress.brwnindustries.com/'
+        resValue "string", "launcherUrl", launcherUrl
+        resValue "string", "hostName", "progress.brwnindustries.com"
+        resValue "string", "assetStatements", """[{
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+              "namespace": "web",
+              "site": "https://progress.brwnindustries.com"
+            }
+        }]"""
+    }
+
+    signingConfigs {
+        release {
+            if (ciStoreFile) {
+                storeFile file(ciStoreFile)
+                storePassword ciStorePassword
+                keyAlias ciKeyAlias
+                keyPassword ciKeyPassword
+            } else if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (ciStoreFile || keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24'
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+    implementation 'androidx.browser:browser:1.8.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+}

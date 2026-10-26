@@ -190,11 +190,16 @@ export function buildPushMessage(
   event: TaskEvent
 ): PushMessage {
   const what = [event.tool, event.description].filter(Boolean).join(": ");
+  const params = new URLSearchParams();
+  if (event.task_id) params.set("task", event.task_id);
+  if (agentName) params.set("agent", agentName);
+  const qs = params.toString();
   return {
     title: agentName ? `${title} · ${agentName}` : title,
     body: (what || "Agent update").slice(0, 180),
     tag: event.task_id ? `task-${event.task_id}-${event.type}` : undefined,
-    url: "/#/dashboard",
+    // Deep link so tapping the notification opens the dashboard focused on the task/agent.
+    url: qs ? `/#/dashboard?${qs}` : "/#/dashboard",
   };
 }
 

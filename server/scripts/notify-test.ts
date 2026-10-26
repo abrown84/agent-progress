@@ -30,7 +30,7 @@ const { authRoutes } = await import("../src/routes/auth.js");
 const { workspaceRoutes } = await import("../src/routes/workspaces.js");
 const { pushRoutes } = await import("../src/routes/push.js");
 const { apiRoutes } = await import("../src/routes/events.js");
-const {
+  const {
   ensureVapidKeys,
   pushEnabled,
   shouldNotifyEvent,
@@ -39,6 +39,7 @@ const {
   getNotifyPrefs,
   notifyTaskEvent,
   countSubscriptions,
+  buildPushMessage,
 } = await import("../src/lib/push.js");
 
 const app = new Hono();
@@ -129,6 +130,12 @@ try {
   assert(shouldNotifyEvent(ws, errEvent).ok, "error should notify");
   assert(shouldNotifyEvent(ws, needs).ok, "needs_input should notify");
   assert(!shouldNotifyEvent(ws, started).ok, "started should not notify");
+
+  const deep = buildPushMessage("❌ Task failed", "CI Agent", errEvent);
+  assert(
+    deep.url?.includes("task=t2") && deep.url?.includes("agent=CI"),
+    `deep link missing task/agent: ${deep.url}`
+  );
 
   setNotifyPrefs(ws, { notifyCompletions: false });
   resetNotifyDedupe();
