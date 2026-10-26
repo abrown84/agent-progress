@@ -30,8 +30,9 @@
     "build:web": "tsc --noEmit && vite build --config vite.config.web.ts && mv dist-web/web.html dist-web/index.html",
     "dev:server": "npm --prefix server run dev",
     "smoke": "npm --prefix server run smoke",
+    "test": "npm --prefix server run test",
     "tauri": "tauri",
-    "help": "echo Available commands: npm start | npm run build | npm run dev:frontend | npm run build:web | npm run dev:server | npm run smoke"
+    "help": "echo Available commands: npm start | npm run build | npm run build:web | npm run dev:server | npm run smoke | npm test"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.18",

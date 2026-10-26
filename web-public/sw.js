@@ -15,10 +15,11 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",
-      tag: data.tag,
+      tag: data.tag || "agent-progress",
       renotify: Boolean(data.tag),
       icon: "/icon-192.png",
       badge: "/icon-192.png",
+      vibrate: [80, 40, 80],
       data: { url: data.url || "/#/dashboard" },
     })
   );

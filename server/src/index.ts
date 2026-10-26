@@ -13,6 +13,7 @@ import { authRoutes } from "./routes/auth.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
 import { apiRoutes } from "./routes/events.js";
 import { pushRoutes } from "./routes/push.js";
+import { ensureVapidKeys, pushEnabled, relayEnabled } from "./lib/push.js";
 
 const app = new Hono();
 
@@ -42,12 +43,16 @@ app.get("/api/health", (c) =>
     service: "agent-progress",
     allowSignups: config.allowSignups,
     branding: "Built by Brown Industries",
+    pushEnabled: pushEnabled(),
+    relayEnabled: relayEnabled(),
   })
 );
 
 app.get("/api/config/public", (c) =>
   c.json({
     allowSignups: config.allowSignups,
+    pushEnabled: pushEnabled(),
+    publicUrl: config.publicUrl,
     branding: {
       name: "Agent Progress",
       byline: "Built by Brown Industries",
@@ -106,8 +111,13 @@ if (fs.existsSync(webRoot)) {
   );
 }
 
-// Ensure DB is ready
+// Ensure DB is ready, then auto-provision VAPID so phone push works without manual keys.
 getDb();
+try {
+  ensureVapidKeys();
+} catch (e) {
+  console.warn("[push] VAPID setup failed:", (e as Error).message);
+}
 
 // Optional auto-seed on boot when env vars are set
 if (config.seedOwnerEmail && config.seedOwnerPassword) {
@@ -135,6 +145,9 @@ console.log(
 );
 console.log(`SQLite: ${config.databasePath}`);
 console.log(`Signups: ${config.allowSignups ? "enabled" : "disabled"}`);
+console.log(
+  `Notifications: web-push=${pushEnabled() ? "on" : "off"} relay=${relayEnabled() ? "on" : "off"}`
+);
 
 serve({
   fetch: app.fetch,

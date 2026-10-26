@@ -10,8 +10,11 @@ import {
   currentSubscription,
   disablePush,
   enablePush,
+  fetchPushStatus,
   pushSupported,
   sendTestPush,
+  updateNotifyPrefs,
+  type PushStatus,
 } from "../push";
 
 interface Props {
@@ -20,6 +23,7 @@ interface Props {
 
 const TOKEN_KEY = "ap-web-read-token";
 const URL_KEY = "ap-web-base-url";
+const WRITE_TOKEN_KEY = "ap-web-write-token";
 
 function readBootstrapFromLocation(): { baseUrl?: string; readToken?: string; autoConnect?: boolean } {
   try {
@@ -40,6 +44,35 @@ function readBootstrapFromLocation(): { baseUrl?: string; readToken?: string; au
   }
 }
 
+function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-overlay-muted">{label}</span>
+        <button
+          type="button"
+          className="text-[11px] text-overlay-accent hover:underline"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(value);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            } catch {
+              /* ignore */
+            }
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <code className="mt-1 block break-all rounded bg-overlay-bg px-2 py-1.5 text-[11px] text-overlay-text">
+        {value}
+      </code>
+    </div>
+  );
+}
+
 export function DashboardPage({ onGo }: Props) {
   const boot = readBootstrapFromLocation();
   const [baseUrl, setBaseUrl] = useState(
@@ -47,6 +80,9 @@ export function DashboardPage({ onGo }: Props) {
   );
   const [readToken, setReadToken] = useState(
     () => boot.readToken || localStorage.getItem(TOKEN_KEY) || ""
+  );
+  const [writeToken, setWriteToken] = useState(
+    () => sessionStorage.getItem(WRITE_TOKEN_KEY) || ""
   );
   const [connected, setConnected] = useState(
     () => Boolean(boot.autoConnect) || Boolean(localStorage.getItem(TOKEN_KEY))
@@ -58,6 +94,7 @@ export function DashboardPage({ onGo }: Props) {
   const [pushOn, setPushOn] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMsg, setPushMsg] = useState("");
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
 
   const { activeTasks, completedTasks, agents, errors, connectionStatus } =
     useTaskStore(
@@ -70,6 +107,15 @@ export function DashboardPage({ onGo }: Props) {
       }))
     );
   const maxRecent = useSettingsStore((s) => s.maxRecentTasks);
+
+  const refreshPushStatus = async (wsId: string) => {
+    try {
+      const status = await fetchPushStatus(wsId);
+      setPushStatus(status);
+    } catch {
+      /* guest / not signed in */
+    }
+  };
 
   useEffect(() => {
     void me().then((data) => {
@@ -89,7 +135,11 @@ export function DashboardPage({ onGo }: Props) {
     void currentSubscription().then((sub) => setPushOn(Boolean(sub)));
   }, []);
 
-  const togglePush = async () => {
+  useEffect(() => {
+    if (workspaceId) void refreshPushStatus(workspaceId);
+  }, [workspaceId]);
+
+  const enableNotifications = async () => {
     if (!workspaceId) {
       setPushMsg("Sign in first to enable notifications");
       return;
@@ -97,18 +147,98 @@ export function DashboardPage({ onGo }: Props) {
     setPushBusy(true);
     setPushMsg("");
     try {
-      if (pushOn) {
-        await disablePush();
-        setPushOn(false);
-        setPushMsg("Notifications off");
-      } else {
-        await enablePush(workspaceId);
-        setPushOn(true);
-        await sendTestPush(workspaceId).catch(() => {});
-        setPushMsg("Notifications on — a test was sent");
-      }
+      await enablePush(workspaceId);
+      setPushOn(true);
+      const test = await sendTestPush(workspaceId);
+      setPushMsg(
+        test.ok
+          ? "Enabled — check your phone for the test notification"
+          : "Enabled, but test did not deliver"
+      );
+      await refreshPushStatus(workspaceId);
     } catch (err) {
-      setPushMsg(err instanceof Error ? err.message : "Could not change notifications");
+      setPushMsg(err instanceof Error ? err.message : "Could not enable notifications");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const turnOffNotifications = async () => {
+    setPushBusy(true);
+    setPushMsg("");
+    try {
+      await disablePush();
+      setPushOn(false);
+      setPushMsg("Notifications off on this device");
+      if (workspaceId) await refreshPushStatus(workspaceId);
+    } catch (err) {
+      setPushMsg(err instanceof Error ? err.message : "Could not disable");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const runTestNotification = async () => {
+    if (!workspaceId) return;
+    setPushBusy(true);
+    setPushMsg("");
+    try {
+      const test = await sendTestPush(workspaceId);
+      const parts = [
+        test.push && test.push.sent > 0 ? `push×${test.push.sent}` : null,
+        test.relay ? "relay" : null,
+      ].filter(Boolean);
+      setPushMsg(
+        parts.length
+          ? `Test sent (${parts.join(" + ")}) — check your phone`
+          : "Test requested"
+      );
+      await refreshPushStatus(workspaceId);
+    } catch (err) {
+      setPushMsg(err instanceof Error ? err.message : "Test failed");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const toggleCompletions = async () => {
+    if (!workspaceId || !pushStatus) return;
+    setPushBusy(true);
+    try {
+      const prefs = await updateNotifyPrefs(workspaceId, {
+        notifyCompletions: !pushStatus.prefs.notifyCompletions,
+      });
+      setPushStatus({ ...pushStatus, prefs });
+    } catch (err) {
+      setPushMsg(err instanceof Error ? err.message : "Could not update quiet prefs");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const quietForHour = async () => {
+    if (!workspaceId) return;
+    setPushBusy(true);
+    try {
+      const prefs = await updateNotifyPrefs(workspaceId, { quietMinutes: 60 });
+      if (pushStatus) setPushStatus({ ...pushStatus, prefs });
+      setPushMsg("Quiet for 1 hour");
+    } catch (err) {
+      setPushMsg(err instanceof Error ? err.message : "Could not set quiet");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const clearQuiet = async () => {
+    if (!workspaceId) return;
+    setPushBusy(true);
+    try {
+      const prefs = await updateNotifyPrefs(workspaceId, { quietMinutes: 0 });
+      if (pushStatus) setPushStatus({ ...pushStatus, prefs });
+      setPushMsg("Quiet cleared");
+    } catch (err) {
+      setPushMsg(err instanceof Error ? err.message : "Could not clear quiet");
     } finally {
       setPushBusy(false);
     }
@@ -162,11 +292,19 @@ export function DashboardPage({ onGo }: Props) {
       if (kind === "read") {
         setReadToken(result.secret);
         localStorage.setItem(TOKEN_KEY, result.secret);
+      } else {
+        setWriteToken(result.secret);
+        sessionStorage.setItem(WRITE_TOKEN_KEY, result.secret);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Token create failed");
     }
   };
+
+  const reportUrl = (baseUrl || window.location.origin).replace(/\/$/, "");
+  const agentExample = writeToken
+    ? `curl -sS -X POST "${reportUrl}/api/events" \\\n  -H "Authorization: Bearer ${writeToken}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"type":"task_complete","task_id":"demo-1","tool":"Demo","description":"hello","timestamp":${Date.now()}}'`
+    : "";
 
   return (
     <div className="min-h-screen bg-[#0b1220] text-overlay-text">
@@ -209,8 +347,133 @@ export function DashboardPage({ onGo }: Props) {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[280px_1fr]">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[300px_1fr]">
         <aside className="space-y-4">
+          {userEmail && workspaceId && (
+            <section className="rounded-lg border border-overlay-accent/40 bg-overlay-card/40 p-4">
+              <h2 className="text-sm font-semibold">1. Phone alerts</h2>
+              <p className="mt-1 text-xs text-overlay-muted">
+                {pushSupported()
+                  ? "On this phone (Chrome): enable, allow permission, done. Optional: Add to Home screen for a more reliable background delivery."
+                  : "Open this site in Chrome on Android, then come back here."}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!pushOn ? (
+                  <button
+                    type="button"
+                    disabled={pushBusy || !pushSupported()}
+                    onClick={() => void enableNotifications()}
+                    className="rounded bg-overlay-accent px-3 py-1.5 text-xs font-semibold text-slate-950 disabled:opacity-50"
+                  >
+                    Enable notifications
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={pushBusy}
+                      onClick={() => void runTestNotification()}
+                      className="rounded bg-overlay-accent px-3 py-1.5 text-xs font-semibold text-slate-950 disabled:opacity-50"
+                    >
+                      Send test notification
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pushBusy}
+                      onClick={() => void turnOffNotifications()}
+                      className="rounded border border-overlay-border px-3 py-1.5 text-xs disabled:opacity-50"
+                    >
+                      Disable
+                    </button>
+                  </>
+                )}
+              </div>
+              {pushStatus && (
+                <p className="mt-2 text-[11px] text-overlay-muted">
+                  Devices subscribed: {pushStatus.subscriptionCount}
+                  {pushStatus.relayEnabled ? " · BRWN Text relay on" : ""}
+                  {pushStatus.prefs.quietActive ? " · quiet" : ""}
+                </p>
+              )}
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-overlay-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={pushStatus ? !pushStatus.prefs.notifyCompletions : false}
+                  disabled={pushBusy || !pushStatus}
+                  onChange={() => void toggleCompletions()}
+                />
+                <span>Only errors &amp; decisions (skip completed)</span>
+              </label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pushStatus?.prefs.quietActive ? (
+                  <button
+                    type="button"
+                    disabled={pushBusy}
+                    onClick={() => void clearQuiet()}
+                    className="text-[11px] text-overlay-accent hover:underline disabled:opacity-50"
+                  >
+                    End quiet now
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={pushBusy}
+                    onClick={() => void quietForHour()}
+                    className="text-[11px] text-overlay-accent hover:underline disabled:opacity-50"
+                  >
+                    Quiet for 1 hour
+                  </button>
+                )}
+              </div>
+              {pushMsg && <p className="mt-2 text-xs text-overlay-accent">{pushMsg}</p>}
+            </section>
+          )}
+
+          {userEmail && workspaceId && (
+            <section className="rounded-lg border border-overlay-border bg-overlay-card/40 p-4">
+              <h2 className="text-sm font-semibold">2. Agents report here</h2>
+              <p className="mt-1 text-xs text-overlay-muted">
+                One URL + one write token. Agents POST finished / failed / needs-decision events.
+              </p>
+              <CopyField label="Report URL" value={`${reportUrl}/api/events`} />
+              {writeToken ? (
+                <CopyField label="Write token" value={writeToken} />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void mintToken("write")}
+                  className="mt-3 rounded bg-overlay-accent px-3 py-1.5 text-xs font-semibold text-slate-950"
+                >
+                  Mint write token
+                </button>
+              )}
+              {writeToken && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-overlay-muted">One-line example</span>
+                    <button
+                      type="button"
+                      className="text-[11px] text-overlay-accent hover:underline"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(agentExample);
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-overlay-bg p-2 text-[10px] text-overlay-muted">
+                    {agentExample}
+                  </pre>
+                </div>
+              )}
+            </section>
+          )}
+
           <section className="rounded-lg border border-overlay-border bg-overlay-card/40 p-4">
             <h2 className="text-sm font-semibold">Connect</h2>
             <p className="mt-1 text-xs text-overlay-muted">
@@ -247,53 +510,15 @@ export function DashboardPage({ onGo }: Props) {
                 {connected ? "Reconnect" : "Connect"}
               </button>
               {workspaceId && (
-                <>
-                  <button
-                    onClick={() => void mintToken("read")}
-                    className="rounded border border-overlay-border px-3 py-1.5 text-xs"
-                  >
-                    Mint read
-                  </button>
-                  <button
-                    onClick={() => void mintToken("write")}
-                    className="rounded border border-overlay-border px-3 py-1.5 text-xs"
-                  >
-                    Mint write
-                  </button>
-                </>
+                <button
+                  onClick={() => void mintToken("read")}
+                  className="rounded border border-overlay-border px-3 py-1.5 text-xs"
+                >
+                  Mint read
+                </button>
               )}
             </div>
           </section>
-
-          {userEmail && (
-            <section className="rounded-lg border border-overlay-border bg-overlay-card/40 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">Enable notifications</h2>
-                <button
-                  role="switch"
-                  aria-checked={pushOn}
-                  aria-label="Enable notifications"
-                  disabled={pushBusy || !pushSupported()}
-                  onClick={() => void togglePush()}
-                  className={`relative h-6 w-11 rounded-full transition-colors disabled:opacity-50 ${
-                    pushOn ? "bg-overlay-accent" : "bg-overlay-border"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
-                      pushOn ? "left-[22px]" : "left-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-              <p className="mt-1 text-xs text-overlay-muted">
-                {pushSupported()
-                  ? "Push to this device when a task completes, fails, or needs a decision."
-                  : "Push isn't supported here. On Android, open in Chrome and add to home screen."}
-              </p>
-              {pushMsg && <p className="mt-2 text-xs text-overlay-accent">{pushMsg}</p>}
-            </section>
-          )}
 
           <section className="rounded-lg border border-overlay-border bg-overlay-card/40 p-4">
             <h2 className="text-sm font-semibold">Agents</h2>

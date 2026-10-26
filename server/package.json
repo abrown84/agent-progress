@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx scripts/seed-owner.ts",
     "smoke": "tsx scripts/smoke-test.ts",
-    "test": "tsx scripts/smoke-test.ts"
+    "test:notify": "tsx scripts/notify-test.ts",
+    "test": "tsx scripts/smoke-test.ts && tsx scripts/notify-test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",

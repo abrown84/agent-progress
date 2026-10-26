@@ -25,6 +25,41 @@ This product **never calls an LLM**. Summaries are local pattern matching. If mo
 - **Optional forwarder** — desktop can push local events to a cloud workspace
 - **Self-host** — Docker Compose + nginx; signups gateable via env
 
+## Setup in 2 minutes (phone + agents)
+
+Intended for Alex at `https://progress.brwnindustries.com`.
+
+1. **Sign in** on your Android phone (Chrome) → open **Dashboard**.
+2. Tap **Enable notifications** → allow the permission → you should get a test ping.  
+   Optional but recommended: Chrome menu → **Add to Home screen** (more reliable background delivery).
+3. Tap **Mint write token** (or use the token from seed) → copy **Report URL** + **Write token**.
+4. Point any agent at one URL + one token:
+
+```bash
+curl -sS -X POST "https://progress.brwnindustries.com/api/events" \
+  -H "Authorization: Bearer apw_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"task_complete","task_id":"demo-1","tool":"Demo","description":"hello","timestamp":1705678901234}'
+```
+
+You get a phone alert on `task_complete`, `task_error`, and `task_needs_input`.  
+Use **Send test notification** anytime. Quiet controls: “Only errors & decisions” and “Quiet for 1 hour”.
+
+Desktop overlay keeps working unchanged (local files + optional cloud forwarder).
+
+### Deploy notes (VPS)
+
+After pulling a build that includes Web Push:
+
+```bash
+docker compose up --build -d
+```
+
+- **VAPID**: if `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` are empty, the server **auto-generates** keys and stores them in SQLite (`app_kv`). To pin keys across reinstalls, generate once with `npx web-push generate-vapid-keys` and set them in `.env` (never commit `.env`).
+- **Optional BRWN Text relay**: set `RELAY_NOTIFY_URL` + `RELAY_NOTIFY_TOKEN` to also mirror alerts to the Android BRWN Text app. Web Push alone is enough for phone alerts.
+- Confirm: `curl -s https://progress.brwnindustries.com/api/health` → `pushEnabled: true`.
+- nginx must terminate HTTPS (required for Web Push). Use `deploy/nginx.progress.brwnindustries.com.conf.example`.
+
 ## Quick start (desktop)
 
 ```bash
@@ -92,6 +127,10 @@ server {
 | `DATABASE_PATH` | SQLite file (Compose volume `/data`) |
 | `CORS_ORIGIN` | Allowed browser origins |
 | `PUBLIC_WEB_DIR` | Static web build directory |
+| `PUBLIC_URL` | Absolute site URL (notification links; default `https://progress.brwnindustries.com`) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push keys (optional — auto-generated + persisted if empty) |
+| `VAPID_SUBJECT` | `mailto:…` contact for VAPID |
+| `RELAY_NOTIFY_URL` / `RELAY_NOTIFY_TOKEN` | Optional BRWN Text relay mirror |
 
 **Never commit secrets.** Tokens are hashed at rest (SHA-256); plaintext is shown once at creation.
 
@@ -149,8 +188,14 @@ curl -sS -X POST "$PROGRESS_URL/api/events" \
 | `POST` | `/api/auth/magic-link` | — | Magic-link ready (no mailer bundled) |
 | `GET` | `/api/workspaces` | session | List workspaces |
 | `POST` | `/api/workspaces/:id/tokens` | session | Mint read/write tokens |
+| `GET` | `/api/push/vapid-public-key` | — | Public VAPID key |
+| `GET` | `/api/push/status` | session | Push/relay status + prefs |
+| `POST` | `/api/push/subscribe` | session | Register this device |
+| `POST` | `/api/push/test` | session | Send test (Web Push + optional relay) |
+| `PATCH` | `/api/push/prefs` | session | Quiet / skip-completions |
 
-Accepted event `type` values: `task_started`, `task_complete`, `task_error`, `task_canceled`, `session_stopped`.  
+Accepted event `type` values: `task_started`, `task_complete`, `task_error`, `task_canceled`, `task_needs_input`, `session_stopped`.  
+Phone push fires for **complete / error / needs_input** (completions skip when the task is marked `background: true`, or when quiet prefs mute completions).  
 Also: `todos` array (`content`, `status`, `activeForm`) and `download` (`task_id`, `percent`, …).
 
 Rate limits apply per IP and per token. Invalid shapes return `400` with Zod details.
@@ -187,6 +232,7 @@ Local file watching keeps working either way.
 | `npm run dev:web` | Web UI with `/api` proxy to `:8787` |
 | `npm run dev:server` | API on `:8787` |
 | `npm run smoke` | Ingest → state → SSE smoke test |
+| `npm test` | Smoke + notification-path tests |
 
 ## Event format (local JSONL / API)
 
