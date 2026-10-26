@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Agent Progress</string>
-    <!-- launcherUrl, hostName, assetStatements are injected from app/build.gradle -->
+    <string name="default_notification_channel_id">agent_progress</string>
+    <string name="default_notification_channel_name">Agent alerts</string>
+    <string name="notifications_denied">Notifications permission is required for agent alerts.</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_body">Agent Progress %1$s is ready. Download and install?</string>
+    <string name="update_install">Install</string>
+    <string name="update_later">Later</string>
+    <string name="update_failed">Could not download or verify the update.</string>
 </resources>

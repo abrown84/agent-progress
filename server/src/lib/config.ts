@@ -43,4 +43,7 @@ export const config = {
   relayNotifyUrl: process.env.RELAY_NOTIFY_URL || "",
   relayNotifyToken: process.env.RELAY_NOTIFY_TOKEN || "",
   publicUrl: process.env.PUBLIC_URL || "https://progress.brwnindustries.com",
+  // Firebase Cloud Messaging (HTTP v1). Prefer a file path on the VPS; JSON string also works.
+  fcmProjectId: process.env.FCM_PROJECT_ID || "",
+  fcmServiceAccountPath: process.env.FCM_SERVICE_ACCOUNT_PATH || "",
 };

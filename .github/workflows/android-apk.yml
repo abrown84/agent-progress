@@ -46,20 +46,42 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$HOME/.config/agent-progress/android-release.keystore"
           echo "ANDROID_KEYSTORE_PATH=$HOME/.config/agent-progress/android-release.keystore" >> "$GITHUB_ENV"
 
+      - name: Unit tests
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          ./gradlew test --no-daemon
+
       - name: Assemble APK (signed release when secrets present)
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          chmod +x gradlew
           if [ -n "${ANDROID_KEYSTORE_PATH:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
             ./gradlew assembleRelease --no-daemon
           else
             echo "No keystore secrets — building debug APK (CI compile check only)"
             ./gradlew assembleDebug --no-daemon
           fi
+
+      - name: OTA manifest (signed release only)
+        if: ${{ env.ANDROID_KEYSTORE_PATH != '' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          mkdir -p artifacts
+          cp "$APK" artifacts/agent-progress.apk
+          cat > artifacts/latest.json <<EOF
+          {
+            "versionCode": 2,
+            "versionName": "2.0.0",
+            "url": "https://progress.brwnindustries.com/android/agent-progress.apk",
+            "sha256": "${SHA}"
+          }
+          EOF
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -68,5 +90,7 @@ jobs:
           path: |
             android/app/build/outputs/apk/release/*.apk
             android/app/build/outputs/apk/debug/*.apk
+            artifacts/latest.json
+            artifacts/agent-progress.apk
           if-no-files-found: warn
           retention-days: 30

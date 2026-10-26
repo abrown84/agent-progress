@@ -11,6 +11,7 @@ import {
   disablePush,
   enablePush,
   fetchPushStatus,
+  isNativeAndroidApp,
   pushSupported,
   sendTestPush,
   updateNotifyPrefs,
@@ -132,12 +133,21 @@ export function DashboardPage({ onGo }: Props) {
   }, []);
 
   useEffect(() => {
+    if (isNativeAndroidApp()) {
+      // Native shell: treat as on once FCM devices are registered (status refresh).
+      return;
+    }
     void currentSubscription().then((sub) => setPushOn(Boolean(sub)));
   }, []);
 
   useEffect(() => {
     if (workspaceId) void refreshPushStatus(workspaceId);
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (!pushStatus || !isNativeAndroidApp()) return;
+    setPushOn((pushStatus.myFcmDeviceCount ?? 0) > 0);
+  }, [pushStatus]);
 
   const enableNotifications = async () => {
     if (!workspaceId) {
@@ -185,6 +195,7 @@ export function DashboardPage({ onGo }: Props) {
     try {
       const test = await sendTestPush(workspaceId);
       const parts = [
+        test.fcm && test.fcm.sent > 0 ? `fcm×${test.fcm.sent}` : null,
         test.push && test.push.sent > 0 ? `push×${test.push.sent}` : null,
         test.relay ? "relay" : null,
       ].filter(Boolean);
@@ -353,19 +364,29 @@ export function DashboardPage({ onGo }: Props) {
             <section className="rounded-lg border border-overlay-accent/40 bg-overlay-card/40 p-4">
               <h2 className="text-sm font-semibold">1. Phone alerts</h2>
               <p className="mt-1 text-xs text-overlay-muted">
-                {pushSupported()
-                  ? "Install the Agent Progress APK (or open in Chrome): enable, allow permission, done. Tap a notification to jump back to the task."
-                  : "Install the Android APK or open this site in Chrome, then come back here."}
+                {isNativeAndroidApp()
+                  ? "Native app: enable once, allow notifications — alerts use FCM (no Chrome needed)."
+                  : pushSupported()
+                    ? "Browser Web Push, or install the Agent Progress APK for native FCM alerts."
+                    : "Install the Agent Progress Android APK for notifications."}
               </p>
-              <p className="mt-1 text-[11px] text-overlay-muted">
-                APK:{" "}
-                <a
-                  className="text-overlay-accent hover:underline"
-                  href="/android/agent-progress.apk"
-                >
-                  Download Agent Progress
-                </a>
-              </p>
+              {!isNativeAndroidApp() && (
+                <p className="mt-1 text-[11px] text-overlay-muted">
+                  APK:{" "}
+                  <a
+                    className="text-overlay-accent hover:underline"
+                    href="/android/agent-progress.apk"
+                  >
+                    Download Agent Progress
+                  </a>
+                </p>
+              )}
+              {pushStatus && (
+                <p className="mt-1 text-[11px] text-overlay-muted">
+                  FCM devices: {pushStatus.fcmDeviceCount ?? 0}
+                  {pushStatus.fcmEnabled === false ? " · server FCM not configured yet" : ""}
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 {!pushOn ? (
                   <button
@@ -399,7 +420,7 @@ export function DashboardPage({ onGo }: Props) {
               </div>
               {pushStatus && (
                 <p className="mt-2 text-[11px] text-overlay-muted">
-                  Devices subscribed: {pushStatus.subscriptionCount}
+                  Web Push subs: {pushStatus.subscriptionCount}
                   {pushStatus.relayEnabled ? " · BRWN Text relay on" : ""}
                   {pushStatus.prefs.quietActive ? " · quiet" : ""}
                 </p>

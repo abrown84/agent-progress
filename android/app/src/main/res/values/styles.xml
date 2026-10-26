@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.AgentProgress.Launcher" parent="@android:style/Theme.DeviceDefault.NoActionBar">
-        <item name="android:windowBackground">@color/background</item>
+    <style name="Theme.AgentProgress" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
         <item name="android:statusBarColor">@color/background</item>
         <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+    <style name="Theme.AgentProgress.Splash" parent="Theme.AgentProgress">
+        <item name="android:windowBackground">@drawable/splash_screen</item>
     </style>
 </resources>

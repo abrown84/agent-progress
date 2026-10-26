@@ -2,6 +2,12 @@ import webpush from "web-push";
 import { config } from "./config.js";
 import { getDb } from "./db.js";
 import type { TaskEvent } from "./types.js";
+import {
+  countFcmDevices,
+  fcmEnabled,
+  sendFcmToWorkspace,
+  usersWithFcm,
+} from "./fcm.js";
 
 let vapidReady = false;
 
@@ -208,7 +214,7 @@ export function notifyTaskEvent(
   agentId: string | null,
   event: TaskEvent
 ): void {
-  if (!pushEnabled() && !relayEnabled()) return;
+  if (!pushEnabled() && !relayEnabled() && !fcmEnabled()) return;
 
   const decision = shouldNotifyEvent(workspaceId, event);
   if (!decision.ok) return;
@@ -222,12 +228,34 @@ export function notifyTaskEvent(
   }
 
   const msg = buildPushMessage(decision.title, agentName, event);
-  if (pushEnabled()) {
-    void sendToWorkspace(workspaceId, msg).catch((e) =>
-      console.warn("[push] send failed:", (e as Error).message)
-    );
-  }
-  void sendToRelay(msg);
+  void deliverWorkspaceNotification(workspaceId, msg);
+}
+
+/**
+ * Deliver one logical alert. Prefer FCM for users who registered the native app;
+ * skip Web Push for those users (avoids Chrome + app duplicates). Skip relay when
+ * any FCM device exists for the workspace (native app is the phone channel).
+ */
+export async function deliverWorkspaceNotification(
+  workspaceId: string,
+  msg: PushMessage
+): Promise<{ fcm: { sent: number; removed: number }; push: { sent: number; removed: number }; relay: boolean }> {
+  const fcmUsers = usersWithFcm(workspaceId);
+  const hasFcm = fcmUsers.size > 0 && fcmEnabled();
+
+  const fcm = hasFcm
+    ? await sendFcmToWorkspace(workspaceId, msg)
+    : { sent: 0, removed: 0 };
+
+  const push = pushEnabled()
+    ? await sendToWorkspace(workspaceId, msg, {
+        skipUserIds: fcmUsers,
+      })
+    : { sent: 0, removed: 0 };
+
+  // One phone channel: if native FCM is active for this workspace, don't also hit BRWN Text.
+  const relay = hasFcm && fcm.sent > 0 ? false : await sendToRelay(msg);
+  return { fcm, push, relay };
 }
 
 /** Forward an alert to the BRWN Text relay, which delivers it to the paired phone. Never throws. */
@@ -261,19 +289,21 @@ export async function sendToRelay(msg: PushMessage): Promise<boolean> {
 
 export async function sendToWorkspace(
   workspaceId: string,
-  msg: PushMessage
+  msg: PushMessage,
+  opts?: { skipUserIds?: Set<string> }
 ): Promise<{ sent: number; removed: number }> {
   if (!pushEnabled()) return { sent: 0, removed: 0 };
   const db = getDb();
   const subs = db
     .prepare(
-      `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE workspace_id = ?`
+      `SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions WHERE workspace_id = ?`
     )
-    .all(workspaceId) as SubRow[];
+    .all(workspaceId) as Array<SubRow & { user_id: string }>;
   let sent = 0;
   let removed = 0;
   await Promise.all(
     subs.map(async (s) => {
+      if (opts?.skipUserIds?.has(s.user_id)) return;
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -312,3 +342,5 @@ export function countSubscriptions(workspaceId: string, userId?: string): number
     .get(workspaceId) as { n: number };
   return row.n;
 }
+
+export { countFcmDevices, fcmEnabled, usersWithFcm };

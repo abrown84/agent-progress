@@ -5,14 +5,16 @@ import { config } from "../lib/config.js";
 import { AuthError, requireSession, userCanAccessWorkspace } from "../lib/auth.js";
 import { generateId } from "../lib/crypto.js";
 import {
+  countFcmDevices,
   countSubscriptions,
+  deliverWorkspaceNotification,
+  fcmEnabled,
   getNotifyPrefs,
   pushEnabled,
   relayEnabled,
-  sendToRelay,
-  sendToWorkspace,
   setNotifyPrefs,
 } from "../lib/push.js";
+import { deleteFcmToken, upsertFcmToken } from "../lib/fcm.js";
 
 export const pushRoutes = new Hono();
 
@@ -40,9 +42,12 @@ pushRoutes.get("/status", (c) => {
   return c.json({
     pushEnabled: pushEnabled(),
     relayEnabled: relayEnabled(),
+    fcmEnabled: fcmEnabled(),
     publicUrl: config.publicUrl,
     subscriptionCount: countSubscriptions(workspaceId),
     mySubscriptionCount: countSubscriptions(workspaceId, session.userId),
+    fcmDeviceCount: countFcmDevices(workspaceId),
+    myFcmDeviceCount: countFcmDevices(workspaceId, session.userId),
     prefs: {
       notifyCompletions: prefs.notifyCompletions,
       quietUntil: prefs.quietUntil,
@@ -57,7 +62,6 @@ pushRoutes.patch("/prefs", async (c) => {
     .object({
       workspaceId: z.string().min(1),
       notifyCompletions: z.boolean().optional(),
-      /** Minutes of quiet time from now; 0 clears quiet. */
       quietMinutes: z.number().int().min(0).max(24 * 60).optional(),
     })
     .parse(await c.req.json());
@@ -125,13 +129,43 @@ pushRoutes.post("/unsubscribe", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Native Android app registers its FCM device token here (session cookie). */
+pushRoutes.post("/fcm/register", async (c) => {
+  const session = requireSession(c);
+  const body = z
+    .object({
+      workspaceId: z.string().min(1),
+      token: z.string().min(20).max(4096),
+      platform: z.string().max(40).optional(),
+    })
+    .parse(await c.req.json());
+  if (!userCanAccessWorkspace(session.userId, body.workspaceId)) {
+    throw new AuthError(403, "No access to workspace");
+  }
+  upsertFcmToken({
+    workspaceId: body.workspaceId,
+    userId: session.userId,
+    token: body.token,
+    platform: body.platform || "android",
+    userAgent: c.req.header("User-Agent") || "",
+  });
+  return c.json({ ok: true, fcmEnabled: fcmEnabled() });
+});
+
+pushRoutes.post("/fcm/unregister", async (c) => {
+  const session = requireSession(c);
+  const body = z.object({ token: z.string().min(1) }).parse(await c.req.json());
+  deleteFcmToken(body.token, session.userId);
+  return c.json({ ok: true });
+});
+
 pushRoutes.post("/test", async (c) => {
   const session = requireSession(c);
   const body = z.object({ workspaceId: z.string().min(1) }).parse(await c.req.json());
   if (!userCanAccessWorkspace(session.userId, body.workspaceId)) {
     throw new AuthError(403, "No access to workspace");
   }
-  if (!pushEnabled() && !relayEnabled()) {
+  if (!pushEnabled() && !relayEnabled() && !fcmEnabled()) {
     return c.json({ error: "No notification channel configured" }, 503);
   }
   const msg = {
@@ -140,29 +174,29 @@ pushRoutes.post("/test", async (c) => {
     tag: "test",
     url: "/#/dashboard",
   };
-  const push = await sendToWorkspace(body.workspaceId, msg);
-  const relay = await sendToRelay(msg);
+  const result = await deliverWorkspaceNotification(body.workspaceId, msg);
   const mySubs = countSubscriptions(body.workspaceId, session.userId);
-  if (push.sent === 0 && !relay) {
+  const myFcm = countFcmDevices(body.workspaceId, session.userId);
+  if (result.fcm.sent === 0 && result.push.sent === 0 && !result.relay) {
     return c.json(
       {
         ok: false,
         error:
-          mySubs === 0
+          myFcm === 0 && mySubs === 0
             ? "No device subscribed yet — enable notifications on this phone first"
-            : "Push send failed (stale subscription?). Try disable → enable again.",
-        push,
-        relay,
+            : "Send failed (stale token/subscription?). Try Enable notifications again.",
+        ...result,
         mySubscriptionCount: mySubs,
+        myFcmDeviceCount: myFcm,
       },
       400
     );
   }
   return c.json({
     ok: true,
-    push,
-    relay,
+    ...result,
     mySubscriptionCount: mySubs,
+    myFcmDeviceCount: myFcm,
   });
 });
 
